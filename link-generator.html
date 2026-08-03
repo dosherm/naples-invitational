@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Naples Invitational — Link Generator</title>
+<style>
+  body{
+    font-family: 'Inter', -apple-system, sans-serif;
+    max-width:640px;
+    margin:40px auto;
+    padding:0 20px;
+    background:#12301F;
+    color:#EDE4D2;
+  }
+  h1{ font-size:20px; margin-bottom:4px; }
+  p.hint{ color:#B8935A; font-size:13px; margin-top:0; }
+  textarea{
+    width:100%;
+    height:140px;
+    background:#1B4332;
+    color:#EDE4D2;
+    border:1px solid #B8935A;
+    border-radius:6px;
+    padding:12px;
+    font-family:monospace;
+    font-size:14px;
+  }
+  input[type=text]{
+    width:100%;
+    padding:8px 10px;
+    border-radius:6px;
+    border:1px solid #B8935A;
+    background:#1B4332;
+    color:#EDE4D2;
+    font-family:monospace;
+    margin-bottom:14px;
+  }
+  button{
+    background:#B8935A;
+    color:#12301F;
+    border:none;
+    padding:10px 18px;
+    border-radius:6px;
+    font-weight:600;
+    cursor:pointer;
+    margin:12px 0 20px;
+  }
+  button:hover{ background:#D4B483; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  td{ padding:8px 6px; border-bottom:1px solid rgba(184,147,90,0.3); vertical-align:top; }
+  td.link-cell{ word-break:break-all; }
+  a{ color:#D4B483; }
+  .copy-btn{
+    background:transparent;
+    border:1px solid #B8935A;
+    color:#EDE4D2;
+    padding:3px 8px;
+    border-radius:4px;
+    font-size:11px;
+    cursor:pointer;
+    margin-left:6px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Naples Invitational — Link Generator</h1>
+<p class="hint">Paste one name per line, set the base URL, hit Generate.</p>
+
+<label style="font-size:13px;">Base page URL</label>
+<input type="text" id="baseUrl" value="https://your-site.com/naples-invitational-acceptance.html">
+
+<textarea id="names" placeholder="Dan Sherman
+Mike Johnson
+Steve Reyes"></textarea>
+
+<br>
+<button onclick="generate()">Generate Links</button>
+
+<table id="results"></table>
+
+<script>
+  function b64encode(str){
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary);
+  }
+
+  function generate(){
+    const base = document.getElementById('baseUrl').value.trim();
+    const names = document.getElementById('names').value
+      .split('\n')
+      .map(n => n.trim())
+      .filter(n => n.length > 0);
+
+    const table = document.getElementById('results');
+    table.innerHTML = '';
+
+    names.forEach(name => {
+      const code = encodeURIComponent(b64encode(name));
+      const url = base + (base.includes('?') ? '&' : '?') + 'n=' + code;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${name}</td>
+        <td class="link-cell"><a href="${url}" target="_blank">${url}</a>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('${url}')">Copy</button>
+        </td>
+      `;
+      table.appendChild(row);
+    });
+  }
+</script>
+
+</body>
+</html>
