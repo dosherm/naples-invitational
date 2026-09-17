@@ -1158,6 +1158,39 @@ body { margin: 0; }
 </footer>
 
 <script>
+// ── PLAYER SORT ──
+// Reads HCP values from the confirmed grid, sorts ascending, and assigns
+// flight labels A1-A4 / B1-B4 / C1-C4 / D1-D4 automatically.
+// The handicap-update routine only needs to change the HCP text; the sort
+// and flight labels are recalculated on every page load.
+(function() {
+  const FLIGHTS = ['A','B','C','D'];
+  const grid = document.querySelector('.players-grid');
+  if (!grid) return;
+  const cards = Array.from(grid.querySelectorAll('.player-card'));
+  if (cards.length === 0) return;
+
+  // Parse HCP: text content of .player-hcp minus the "HCP" label text
+  function getHcp(card) {
+    const el = card.querySelector('.player-hcp');
+    if (!el) return 99;
+    const label = el.querySelector('.hcp-label');
+    const raw = label ? el.textContent.replace(label.textContent, '') : el.textContent;
+    return parseFloat(raw.trim()) || 99;
+  }
+
+  // Sort all cards ascending by HCP
+  cards.sort((a, b) => getHcp(a) - getHcp(b));
+
+  // Assign flight labels and re-insert in sorted order
+  cards.forEach((card, i) => {
+    const flight = FLIGHTS[Math.floor(i / 4)] + ((i % 4) + 1);
+    const label = card.querySelector('.player-flight');
+    if (label) label.textContent = flight;
+    grid.appendChild(card);
+  });
+})();
+
 // ── COUNTDOWN ──
 (function() {
   // Jan 6, 2027 1:20 PM Eastern — ET is UTC-5 in January
