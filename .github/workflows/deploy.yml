@@ -1,0 +1,56 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy HTML files to Hostinger
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: u917027288
+          HOSTINGER_DOMAIN: naples.bourbonbogeys.com
+        run: |
+          set -euo pipefail
+
+          resp=$(curl -sf -X POST "https://developers.hostinger.com/api/hosting/v1/files/upload-urls" \
+            -H "Authorization: Bearer ${HOSTINGER_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${HOSTINGER_USERNAME}\",\"domain\":\"${HOSTINGER_DOMAIN}\"}")
+
+          upload_url=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin)['url'])")
+          auth_key=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin)['auth_key'])")
+          rest_key=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin)['rest_auth_key'])")
+
+          for file in *.html; do
+            [ -f "$file" ] || continue
+            size=$(stat -c%s "$file")
+            target="${upload_url}/${file}?override=true"
+            echo "Deploying ${file} (${size} bytes)..."
+
+            curl -sf -o /dev/null -X POST "$target" \
+              -H "X-Auth: ${auth_key}" -H "X-Auth-Rest: ${rest_key}" \
+              -H "Tus-Resumable: 1.0.0" -H "Upload-Length: ${size}" -H "Upload-Offset: 0"
+
+            curl -sf -o /dev/null -X PATCH "$target" \
+              -H "X-Auth: ${auth_key}" -H "X-Auth-Rest: ${rest_key}" \
+              -H "Tus-Resumable: 1.0.0" -H "Content-Type: application/offset+octet-stream" \
+              -H "Upload-Offset: 0" --data-binary "@${file}"
+
+            echo "${file} deployed."
+          done
+
+      - name: Verify site is live
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "https://naples.bourbonbogeys.com/")
+          echo "https://naples.bourbonbogeys.com/ -> HTTP ${code}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Site did not return 200 after deploy"
+            exit 1
+          fi
