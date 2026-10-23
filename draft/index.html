@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Team Draft</title>
+  <style>
+    :root {
+      --green: #1b5e20;
+      --green-dark: #0f3d14;
+      --green-soft: #e8f5e9;
+      --gold: #f9a825;
+      --bg: #f4f6f4;
+      --card: #ffffff;
+      --text: #1d241e;
+      --muted: #5f6b61;
+      --line: #dfe5df;
+      --danger: #c62828;
+      --flight-a: #1565c0;
+      --flight-b: #2e7d32;
+      --flight-c: #ef6c00;
+      --flight-d: #6a1b9a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    header {
+      background: var(--green-dark);
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    header h1 { margin: 0; font-size: 20px; }
+    header .sub { font-size: 13px; opacity: .8; }
+    header button { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5); }
+    main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      background: var(--green);
+      color: #fff;
+    }
+    button.secondary { background: #fff; color: var(--green); border: 1px solid var(--green); }
+    button.danger { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    select, input {
+      font: inherit;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      max-width: 100%;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .card h2 { margin: 0 0 10px; font-size: 18px; }
+    .row label { display: inline-flex; flex-direction: column; gap: 4px; max-width: 100%; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .muted { color: var(--muted); font-size: 14px; }
+    .status {
+      font-size: 17px;
+      font-weight: 600;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: var(--green-soft);
+      border: 1px solid #b9dcbc;
+      margin-bottom: 16px;
+    }
+    .status.clock { background: #fff8e1; border-color: #ffe082; }
+    .teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .team { background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 12px; }
+    .team.clock { border-color: var(--gold); box-shadow: 0 0 0 3px #fff3c4; }
+    .team h3 { margin: 0 0 8px; font-size: 16px; display: flex; justify-content: space-between; gap: 8px; }
+    .slot { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); }
+    .slot:first-of-type { border-top: 0; }
+    .slot .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .slot.empty .name { color: #a3aca4; }
+    .flight {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 6px;
+      color: #fff; font-size: 13px; font-weight: 700; flex: none;
+    }
+    .flight-A { background: var(--flight-a); }
+    .flight-B { background: var(--flight-b); }
+    .flight-C { background: var(--flight-c); }
+    .flight-D { background: var(--flight-d); }
+    .tag { font-size: 11px; font-weight: 700; color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; padding: 0 4px; }
+    .fresh { animation: flash 2.5s ease-out; }
+    @keyframes flash { from { background: #fff3c4; } to { background: transparent; } }
+    .pool { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .pool h4 { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; font-size: 15px; }
+    .chip {
+      display: block; width: 100%; text-align: left;
+      background: #fff; color: var(--text);
+      border: 1px solid var(--line); border-radius: 8px;
+      padding: 7px 10px; margin-bottom: 6px;
+    }
+    .chip.pickable { border-color: var(--green); color: var(--green); font-weight: 600; }
+    .chip.pickable:hover { background: var(--green-soft); }
+    .chip:disabled { opacity: .4; }
+    .log { margin: 0; padding-left: 22px; }
+    .log li { padding: 2px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { padding: 6px 4px; border-top: 1px solid var(--line); text-align: left; }
+    th { font-size: 13px; color: var(--muted); font-weight: 600; }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .seg button { background: #fff; color: var(--text); border-radius: 0; padding: 5px 11px; }
+    .seg button + button { border-left: 1px solid var(--line); }
+    .seg button.on { color: #fff; }
+    .seg button.on.A { background: var(--flight-a); }
+    .seg button.on.B { background: var(--flight-b); }
+    .seg button.on.C { background: var(--flight-c); }
+    .seg button.on.D { background: var(--flight-d); }
+    .problems { color: var(--danger); margin: 8px 0 0; padding-left: 20px; }
+    .hidden { display: none !important; }
+    .error { color: var(--danger); }
+    @media (max-width: 700px) {
+      main { padding: 12px; }
+      .pool { grid-template-columns: repeat(2, 1fr); }
+      header h1 { font-size: 18px; }
+      /* Two compact team cards per row so "Available" stays near the top */
+      .teams { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .team { padding: 8px; }
+      .team h3 { font-size: 14px; }
+      .team h3 .muted { display: none; }
+      .slot { font-size: 13px; gap: 5px; padding: 3px 0; }
+      .slot .flight { width: 19px; height: 19px; font-size: 11px; }
+      .tag { font-size: 9px; }
+      .status { font-size: 15px; padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1 id="title">Team Draft</h1>
+      <div class="sub" id="subtitle">Connecting…</div>
+    </div>
+    <button id="adminButton" type="button">Run draft</button>
+  </header>
+
+  <main>
+    <!-- Admin sign-in -->
+    <section id="signIn" class="card hidden">
+      <h2>Sign in to run the draft</h2>
+      <form id="signInForm" class="row">
+        <input id="email" type="email" placeholder="Admin email" autocomplete="username" required>
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit">Sign in</button>
+        <button type="button" class="secondary" id="cancelSignIn">Cancel</button>
+      </form>
+      <p class="error" id="signInError"></p>
+    </section>
+
+    <!-- Admin controls -->
+    <section id="adminBar" class="card hidden">
+      <div class="row">
+        <strong>Draft:</strong>
+        <select id="draftPicker"></select>
+        <button type="button" class="secondary" id="newDraftButton">New draft</button>
+        <span class="muted" id="adminWho"></span>
+      </div>
+    </section>
+
+    <!-- Admin: set up a new draft -->
+    <section id="setup" class="card hidden">
+      <h2>New draft</h2>
+      <div class="row">
+        <label>Tournament <select id="tournamentSelect"></select></label>
+        <label>Round <select id="roundSelect"></select></label>
+        <label>Format <select id="formatSelect"></select></label>
+      </div>
+      <h2 style="margin-top:16px">Flights</h2>
+      <p class="muted">Every team gets the same number of players from each flight. Filled in from the last draft, or by handicap index for the first one.</p>
+      <div id="flightCounts" class="row muted"></div>
+      <table>
+        <thead><tr><th>Player</th><th>HCP</th><th>Flight</th></tr></thead>
+        <tbody id="flightRows"></tbody>
+      </table>
+      <h2 style="margin-top:16px">Captains</h2>
+      <p class="muted">Team 1 picks first. Captains count as their own flight and can't be picked.</p>
+      <div id="captainRows"></div>
+      <ul class="problems" id="setupProblems"></ul>
+      <div class="row" style="margin-top:12px">
+        <button type="button" id="startButton">Start draft</button>
+        <button type="button" class="secondary" id="cancelSetup">Cancel</button>
+      </div>
+    </section>
+
+    <!-- The draft board (everyone) -->
+    <section id="board" class="hidden">
+      <div id="status" class="status"></div>
+      <div id="adminActions" class="row hidden" style="margin-bottom:16px">
+        <button type="button" class="secondary" id="undoButton">Undo last pick</button>
+        <button type="button" id="saveButton">Save teams to round</button>
+        <button type="button" class="danger" id="deleteButton">Delete draft</button>
+      </div>
+      <div id="teams" class="teams"></div>
+      <div class="card">
+        <h2>Available</h2>
+        <div id="pool" class="pool"></div>
+      </div>
+      <div class="card">
+        <h2>Picks</h2>
+        <ol id="log" class="log"></ol>
+      </div>
+    </section>
+
+    <section id="empty" class="card hidden">
+      <h2>No draft yet</h2>
+      <p class="muted">This page updates on its own once the draft starts.</p>
+    </section>
+
+    <p class="error" id="pageError"></p>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
