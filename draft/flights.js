@@ -7,8 +7,8 @@
  *   all swaps happen at the same time
  * - Ties: scorecard countback from hole 18 (back 9, back 6, back 3, back 1)
  * - Next day's captains: the players relegated from A, B and C, plus last in D
- * - After Day 3: Flight B (after that day's moves) ranked by Day 3 Stableford
- *   points; 1st & 4th captain one Ryder Cup side, 2nd & 3rd the other
+ * - After Day 3: Flight B (after that day's moves) ranked by Day 3 individual
+ *   net; 1st & 4th captain one Ryder Cup side, 2nd & 3rd the other
  */
 
 import { FLIGHTS } from './draftLogic.js';
@@ -26,11 +26,6 @@ export function strokesOnHole(playingHandicap, holeHandicap) {
 /** Net score on each of 18 holes from gross scores, course handicap and stroke indexes. */
 export function netHoles(gross, courseHandicap, holeHandicaps) {
   return gross.map((g, i) => g - strokesOnHole(courseHandicap, holeHandicaps[i]));
-}
-
-/** Stableford points from net hole scores: double bogey or worse 0, bogey 1, par 2, birdie 3, eagle 4. */
-export function stablefordPoints(net, pars) {
-  return net.map((n, i) => Math.max(0, 2 + pars[i] - n));
 }
 
 const sum = (a, from = 0) => a.slice(from).reduce((s, x) => s + x, 0);
@@ -106,10 +101,10 @@ export function openSystem(flights, net) {
   return { standings, moves, nextFlights, captains, unresolved };
 }
 
-/** Ryder Cup captain pairs: Flight B after the day's moves, ranked by Stableford points. */
-export function ryderCaptains(nextFlights, points) {
+/** Ryder Cup captain pairs: Flight B after the day's moves, ranked by the day's net (lowest first). */
+export function ryderCaptains(nextFlights, net) {
   const bs = Object.keys(nextFlights).filter(id => nextFlights[id] === 'B');
-  const ranked = rank(bs, points, { higherIsBetter: true });
+  const ranked = rank(bs, net);
   const ids = ranked.map(r => r.playerId);
   return { ranked, pairs: [[ids[0], ids[3]], [ids[1], ids[2]]] };
 }

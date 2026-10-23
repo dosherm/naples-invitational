@@ -13,7 +13,7 @@ import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem, setupProblems, groupsFromDraft, flightsByHandicap,
 } from './draftLogic.js';
-import { netHoles, stablefordPoints, openSystem, ryderCaptains } from './flights.js';
+import { netHoles, openSystem, ryderCaptains } from './flights.js';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -497,7 +497,7 @@ async function loadEndTournament() {
   await computeEnd();
 }
 
-// Gross, net and Stableford points per hole for everyone in the round's flights.
+// Gross and net per hole for everyone in the round's flights.
 async function roundScores(round) {
   const course = (await getDoc(doc(db, 'courses', round.courseId))).data() || {};
   const holes = await Promise.all(Array.from({ length: 18 }, async (_, i) =>
@@ -517,8 +517,7 @@ async function roundScores(round) {
       missing.push(`${playerName(id)}: no score on ${empty.length === 18 ? 'any hole' : `hole${empty.length > 1 ? 's' : ''} ${empty.join(', ')}`}`);
       return;
     }
-    const net = netHoles(gross, a.courseHandicap, tee.holes.map(h => h.handicap));
-    players[id] = { gross, net, points: stablefordPoints(net, tee.holes.map(h => h.par)) };
+    players[id] = { gross, net: netHoles(gross, a.courseHandicap, tee.holes.map(h => h.handicap)) };
   });
   return { players, missing };
 }
@@ -567,8 +566,8 @@ function endOutcome() {
   let ryder = null;
   const nextIsLast = end.next && end.next.id === end.rounds[end.rounds.length - 1].id && end.rounds.length > 1;
   if (nextIsLast) {
-    const points = Object.fromEntries(Object.entries(end.data.players).map(([id, p]) => [id, p.points]));
-    ryder = ryderCaptains(nextFlights, points);
+    const net = Object.fromEntries(Object.entries(end.data.players).map(([id, p]) => [id, p.net]));
+    ryder = ryderCaptains(nextFlights, net);
     draftCaptains = ryder.pairs.map(captainIds => ({ captainIds }));
   } else {
     draftCaptains = [...relegated, end.chosen['last-D']].map(id => ({ captainIds: [id] }));
@@ -599,7 +598,7 @@ function renderEnd() {
   const captains = !end.next ? '<p class="muted">This is the last round, so there are no moves to save.</p>'
     : out.ryder
       ? `<h4>${nextLabel} Ryder Cup captains</h4>
-         <p class="muted">Flight B after today's moves, by Stableford points today: ${out.ryder.ranked.map((x, i) => `${i + 1}. ${esc(playerName(x.playerId))} (${x.total})`).join(', ')}</p>
+         <p class="muted">Flight B after today's moves, by net score today: ${out.ryder.ranked.map((x, i) => `${i + 1}. ${esc(playerName(x.playerId))} (${x.total})`).join(', ')}</p>
          <ul>${out.draftCaptains.map((t, i) => `<li>Side ${i + 1}: ${t.captainIds.map(id => esc(playerName(id))).join(' & ')}</li>`).join('')}</ul>`
       : `<h4>${nextLabel} captains</h4><ul>${out.draftCaptains.map(t => `<li>${esc(playerName(t.captainIds[0]))} (now ${out.nextFlights[t.captainIds[0]]})</li>`).join('')}</ul>`;
   $('endRoundBody').innerHTML = `
