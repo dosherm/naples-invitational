@@ -1,0 +1,7 @@
+# The draft page changes during the trip; have browsers re-check these files on
+# each visit (cheap: an unchanged file comes back as 304 Not Modified).
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
