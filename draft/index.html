@@ -127,6 +127,9 @@
     .seg button.on.C { background: var(--flight-c); }
     .seg button.on.D { background: var(--flight-d); }
     .problems { color: var(--danger); margin: 8px 0 0; padding-left: 20px; }
+    .up { color: var(--flight-b); font-weight: 700; margin-left: 3px; }
+    .down { color: var(--danger); font-weight: 700; margin-left: 3px; }
+    #endRound .pool table td, #endRound .pool table th { padding: 4px 3px; font-size: 14px; }
     .hidden { display: none !important; }
     .error { color: var(--danger); }
     @media (max-width: 700px) {
@@ -173,6 +176,7 @@
         <strong>Draft:</strong>
         <select id="draftPicker"></select>
         <button type="button" class="secondary" id="newDraftButton">New draft</button>
+        <button type="button" class="secondary" id="endRoundButton">End of round</button>
         <span class="muted" id="adminWho"></span>
       </div>
     </section>
@@ -202,6 +206,21 @@
       </div>
     </section>
 
+    <!-- Admin: promotion and relegation after a round -->
+    <section id="endRound" class="card hidden">
+      <h2>End of round</h2>
+      <p class="muted">Ranks each flight by individual net (countback from 18 breaks ties), then moves the best in B, C and D up and the worst in A, B and C down.</p>
+      <div class="row">
+        <label>Tournament <select id="endTournament"></select></label>
+        <label>Round played <select id="endRoundSelect"></select></label>
+      </div>
+      <div id="endRoundBody" style="margin-top:12px"></div>
+      <div class="row" style="margin-top:12px">
+        <button type="button" id="confirmEndRound" disabled>Save flights</button>
+        <button type="button" class="secondary" id="cancelEndRound">Close</button>
+      </div>
+    </section>
+
     <!-- The draft board (everyone) -->
     <section id="board" class="hidden">
       <div id="status" class="status"></div>
@@ -224,6 +243,12 @@
         <h2>Picks</h2>
         <ol id="log" class="log"></ol>
       </div>
+    </section>
+
+    <!-- Flights by day (everyone), once a round has flights -->
+    <section id="flightsCard" class="card hidden">
+      <h2>Flights</h2>
+      <div style="overflow-x:auto"><table id="flightsTable"></table></div>
     </section>
 
     <section id="empty" class="card hidden">
