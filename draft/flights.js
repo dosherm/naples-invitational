@@ -11,7 +11,7 @@
  *   net; 1st & 4th captain one Ryder Cup side, 2nd & 3rd the other
  */
 
-import { FLIGHTS } from './draftLogic.js';
+import { FLIGHTS } from './draftLogic.js?v=20261023c';
 
 /** Strokes received on a hole (same rule as the app's utils/games/netScores.js). */
 export function strokesOnHole(playingHandicap, holeHandicap) {

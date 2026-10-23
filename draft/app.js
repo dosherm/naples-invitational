@@ -12,8 +12,8 @@ import {
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem, setupProblems, groupsFromDraft, flightsByHandicap,
-} from './draftLogic.js';
-import { netHoles, openSystem, ryderCaptains } from './flights.js';
+} from './draftLogic.js?v=20261023c';
+import { netHoles, openSystem, ryderCaptains } from './flights.js?v=20261023c';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
