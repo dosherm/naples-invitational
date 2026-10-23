@@ -137,8 +137,12 @@ function render(d) {
 
   show($('adminActions'), isAdmin);
   $('undoButton').disabled = busy || d.picks.length === 0 || d.status === 'saved';
+  show($('saveBar'), isAdmin && done);
   $('saveButton').disabled = busy || !done;
   $('saveButton').textContent = d.status === 'saved' ? 'Save teams to round again' : 'Save teams to round';
+  $('saveNote').textContent = d.status === 'saved'
+    ? `Saved to ${d.roundName}${d.savedBy ? ` by ${d.savedBy}` : ''}.`
+    : `Saving makes these teams ${d.roundName}'s playing groups.`;
 
   const fresh = d.picks.length > lastPickCount && lastPickCount > 0 ? d.picks[d.picks.length - 1].playerId : null;
   lastPickCount = d.picks.length;
@@ -233,9 +237,21 @@ $('undoButton').addEventListener('click', () => {
 $('saveButton').addEventListener('click', () => withBusy(async () => {
   const roundRef = doc(db, 'tournaments', draft.tournamentId, 'rounds', draft.roundId);
   const round = (await getDoc(roundRef)).data();
-  if (round?.groups?.length && !confirm(`${draft.roundName} already has ${round.groups.length} groups. Replace them with these teams?`)) return;
+  // Always ask: this changes the round the app plays from
+  const question = round?.groups?.length
+    ? `${draft.roundName} already has ${round.groups.length} groups. Replace them with these ${draft.teams.length} teams?`
+    : `Save these ${draft.teams.length} teams as ${draft.roundName}'s groups?`;
+  if (!confirm(question)) return;
   const groups = groupsFromDraft(draft, newId);
-  await updateDoc(roundRef, { groups, draftId: draft.id, updatedAt: new Date().toISOString() });
+  const savedBy = auth.currentUser?.email || auth.currentUser?.uid || 'unknown';
+  const savedAt = new Date().toISOString();
+  await updateDoc(roundRef, {
+    groups,
+    draftId: draft.id,
+    draftSavedBy: savedBy,
+    draftSavedAt: savedAt,
+    updatedAt: savedAt,
+  });
 
   // Team games on this round (30/40 Ball) play the drafted teams
   let teamGames = 0;
@@ -250,7 +266,7 @@ $('saveButton').addEventListener('click', () => withBusy(async () => {
       teamGames++;
     }
   }
-  await updateDoc(doc(db, 'drafts', draft.id), { status: 'saved', savedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  await updateDoc(doc(db, 'drafts', draft.id), { status: 'saved', savedBy, savedAt: serverTimestamp(), updatedAt: serverTimestamp() });
   alert(`Saved ${groups.length} groups to ${draft.roundName}${teamGames ? ` and the teams for its 30/40 game` : ''}. Set tee times and tees in the app.`);
 }));
 
