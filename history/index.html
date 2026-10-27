@@ -54,16 +54,15 @@
     .bar-row {
       position: absolute; left: 0; right: 0; height: var(--row);
       display: grid; grid-template-columns: 26px 150px 1fr; align-items: center; gap: 8px;
-      transition: transform var(--step, 250ms) ease-in-out;
+      will-change: transform;
     }
     .rank { color: var(--taupe); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
     .name { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .track { position: relative; height: 22px; }
-    .bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; min-width: 3px; transition: width var(--step, 250ms) linear; }
+    .bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; min-width: 3px; }
     .value {
       position: absolute; top: 50%; transform: translateY(-50%); padding-left: 6px;
       font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap;
-      transition: left var(--step, 250ms) linear;
     }
     .flight-A { background: var(--flight-a); }
     .flight-B { background: var(--flight-b); }
@@ -80,9 +79,6 @@
       .value { font-size: 12px; }
       .panel { padding: 12px; }
       nav { padding: 12px 16px; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .bar-row, .bar, .value { transition: none; }
     }
   </style>
 </head>
@@ -105,13 +101,13 @@
         <div class="controls">
           <button type="button" class="primary" id="play">Play</button>
           <select id="speed" aria-label="Speed">
-            <option value="400">Slow</option>
-            <option value="180" selected>Normal</option>
-            <option value="70">Fast</option>
+            <option value="2.5">Slow</option>
+            <option value="5" selected>Normal</option>
+            <option value="12">Fast</option>
           </select>
         </div>
       </div>
-      <input type="range" id="scrub" min="0" value="0" aria-label="Week">
+      <input type="range" id="scrub" min="0" value="0" step="any" aria-label="Week">
       <div class="chart" id="chart" role="list" aria-label="Players ranked by handicap index"></div>
       <div class="legend">
         <span style="--c: var(--flight-a)">Flight A</span>
@@ -152,48 +148,76 @@
       const rows = [...document.querySelectorAll('.bar-row')];
       $('scrub').max = weeks.length - 1;
 
-      let week = weeks.length - 1;
-      function draw() {
+      // t is a position in weeks (fractional while playing): values glide between
+      // weekly indexes and players slide to their new rank instead of hopping rows.
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let t = weeks.length - 1;
+      let playing = false;
+      let last = 0;
+      const y = players.map(() => null);  // current row positions, eased toward their rank
+
+      const valueAt = (p, at) => {
+        const i = Math.floor(at), f = at - i;
+        const a = p.values[i], b = p.values[Math.min(i + 1, weeks.length - 1)];
+        if (a == null) return b;
+        if (b == null || f === 0) return a;
+        return a + (b - a) * f;
+      };
+
+      function draw(dt) {
+        const week = Math.round(t);
+        const vals = players.map(p => valueAt(p, t));
         const order = players.map((p, i) => i)
-          .sort((a, b) => (players[a].values[week] ?? 99) - (players[b].values[week] ?? 99) || players[a].name.localeCompare(players[b].name));
+          .sort((a, b) => (vals[a] ?? 99) - (vals[b] ?? 99) || players[a].name.localeCompare(players[b].name));
         const h = rowH();
         $('chart').style.height = `${players.length * h}px`;
+        // Ease toward the target row; about a quarter second to settle
+        const k = reduceMotion || dt == null ? 1 : 1 - Math.exp(-dt * 12);
+        let moving = false;
         order.forEach((i, rank) => {
-          const v = players[i].values[week];
+          const target = rank * h;
+          y[i] = y[i] == null ? target : y[i] + (target - y[i]) * k;
+          if (Math.abs(target - y[i]) > 0.5) moving = true; else y[i] = target;
+          const v = vals[i];
           const pct = v == null ? 0 : Math.max(v, 0) / max * 100;
           const row = rows[i];
-          row.style.transform = `translateY(${rank * h}px)`;
+          row.style.transform = `translateY(${y[i]}px)`;
           row.querySelector('.rank').textContent = rank + 1;
           row.querySelector('.bar').style.width = `${pct}%`;
           const label = row.querySelector('.value');
-          label.textContent = fmt(v);
+          label.textContent = fmt(v == null ? v : Math.round(v * 10) / 10);
           label.style.left = `${pct}%`;
-          row.setAttribute('aria-label', `${rank + 1}. ${players[i].name}, ${fmt(v)}`);
+          row.setAttribute('aria-label', `${rank + 1}. ${players[i].name}, ${fmt(players[i].values[week])}`);
         });
         const top = players[order[0]];
         $('date').textContent = dateLabel(weeks[week]);
         $('leader').textContent = `Low man: ${top.name} (${fmt(top.values[week])})`;
-        $('scrub').value = week;
+        $('scrub').value = t;
+        return moving;
       }
 
-      let timer = null;
-      const step = () => Number($('speed').value);
-      function stop() { clearInterval(timer); timer = null; $('play').textContent = 'Play'; }
-      function start() {
-        if (week >= weeks.length - 1) week = 0;
-        document.documentElement.style.setProperty('--step', `${step()}ms`);
-        $('play').textContent = 'Pause';
-        draw();
-        timer = setInterval(() => {
-          if (week >= weeks.length - 1) { stop(); return; }
-          week++;
-          draw();
-        }, step());
+      function frame(now) {
+        const dt = last ? Math.min((now - last) / 1000, 0.1) : 0;
+        last = now;
+        if (playing) {
+          t = Math.min(t + dt * Number($('speed').value), weeks.length - 1);
+          if (t >= weeks.length - 1) stop();
+        }
+        const moving = draw(dt);
+        if (playing || moving) requestAnimationFrame(frame); else last = 0;
       }
-      $('play').addEventListener('click', () => (timer ? stop() : start()));
-      $('speed').addEventListener('change', () => { if (timer) { stop(); start(); } });
-      $('scrub').addEventListener('input', e => { stop(); week = Number(e.target.value); draw(); });
-      window.addEventListener('resize', draw);
+      const kick = () => { if (!last) requestAnimationFrame(frame); };
+
+      function stop() { playing = false; $('play').textContent = 'Play'; }
+      function start() {
+        if (t >= weeks.length - 1) t = 0;
+        playing = true;
+        $('play').textContent = 'Pause';
+        kick();
+      }
+      $('play').addEventListener('click', () => (playing ? stop() : start()));
+      $('scrub').addEventListener('input', e => { stop(); t = Number(e.target.value); kick(); });
+      window.addEventListener('resize', () => { y.fill(null); draw(); });
       draw();  // open on today's standings
     })();
   </script>
