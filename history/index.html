@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Handicap Race · Naples Invitational</title>
+  <meta name="description" content="Every Naples Invitational player's GHIN handicap index, week by week since 2021.">
+  <style>
+    :root {
+      --ink: #0d1b2b;
+      --ink-mid: #1a2d44;
+      --ink-soft: #243450;
+      --gold: #b8943f;
+      --gold-lt: #d4ac58;
+      --gold-pale: #e8d49a;
+      --linen: #f4ede0;
+      --linen-warm: #ede3d0;
+      --linen-deep: #e0d4bc;
+      --sage: #3d5240;
+      --taupe: #7a6e5f;
+      --display: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+      --ui: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+      --flight-a: #b8943f;
+      --flight-b: #3d5240;
+      --flight-c: #243450;
+      --flight-d: #7a6e5f;
+      --row: 34px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--linen); color: var(--ink); font-family: var(--ui); }
+    nav {
+      background: var(--ink); color: var(--linen);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; gap: 12px;
+    }
+    nav a { color: var(--gold-pale); text-decoration: none; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+    nav .brand { font-family: var(--display); font-size: 18px; color: var(--linen); text-transform: none; letter-spacing: 0; }
+    main { max-width: 960px; margin: 0 auto; padding: 28px 16px 48px; }
+    .eyebrow { color: var(--gold); text-transform: uppercase; letter-spacing: .18em; font-size: 12px; margin: 0 0 6px; }
+    h1 { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 6vw, 46px); margin: 0 0 8px; }
+    .lede { color: var(--taupe); margin: 0 0 24px; font-size: 16px; line-height: 1.5; max-width: 640px; }
+    .panel { background: #fffaf2; border: 1px solid var(--linen-deep); border-radius: 10px; padding: 18px; }
+    .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .date { font-family: var(--display); font-size: clamp(26px, 5vw, 38px); line-height: 1; }
+    .leader { color: var(--taupe); font-size: 14px; margin-top: 6px; }
+    .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    button, select {
+      font: inherit; font-size: 14px; border-radius: 6px; padding: 7px 14px; cursor: pointer;
+      border: 1px solid var(--ink-soft); background: #fff; color: var(--ink);
+    }
+    button.primary { background: var(--ink); color: var(--linen); border-color: var(--ink); min-width: 92px; }
+    input[type=range] { width: 100%; accent-color: var(--gold); margin: 6px 0 14px; }
+    .chart { position: relative; }
+    .bar-row {
+      position: absolute; left: 0; right: 0; height: var(--row);
+      display: grid; grid-template-columns: 26px 150px 1fr; align-items: center; gap: 8px;
+      transition: transform var(--step, 250ms) ease-in-out;
+    }
+    .rank { color: var(--taupe); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+    .name { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track { position: relative; height: 22px; }
+    .bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; min-width: 3px; transition: width var(--step, 250ms) linear; }
+    .value {
+      position: absolute; top: 50%; transform: translateY(-50%); padding-left: 6px;
+      font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap;
+      transition: left var(--step, 250ms) linear;
+    }
+    .flight-A { background: var(--flight-a); }
+    .flight-B { background: var(--flight-b); }
+    .flight-C { background: var(--flight-c); }
+    .flight-D { background: var(--flight-d); }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--taupe); }
+    .legend span::before { content: ''; display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+    .note { color: var(--taupe); font-size: 13px; line-height: 1.5; margin-top: 18px; }
+    .error { color: #8a2f2f; }
+    @media (max-width: 600px) {
+      :root { --row: 30px; }
+      .bar-row { grid-template-columns: 20px 104px 1fr; gap: 6px; }
+      .name { font-size: 13px; }
+      .value { font-size: 12px; }
+      .panel { padding: 12px; }
+      nav { padding: 12px 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bar-row, .bar, .value { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="brand" href="../">Naples Invitational</a>
+    <a href="../#players">The Field</a>
+  </nav>
+  <main>
+    <p class="eyebrow">Since 2021</p>
+    <h1>The Handicap Race</h1>
+    <p class="lede">Every player's GHIN handicap index, week by week. The lowest index sits on top; watch the field reshuffle as handicaps rise and fall.</p>
+
+    <div class="panel">
+      <div class="top">
+        <div>
+          <div class="date" id="date" aria-live="polite">&nbsp;</div>
+          <div class="leader" id="leader"></div>
+        </div>
+        <div class="controls">
+          <button type="button" class="primary" id="play">Play</button>
+          <select id="speed" aria-label="Speed">
+            <option value="400">Slow</option>
+            <option value="180" selected>Normal</option>
+            <option value="70">Fast</option>
+          </select>
+        </div>
+      </div>
+      <input type="range" id="scrub" min="0" value="0" aria-label="Week">
+      <div class="chart" id="chart" role="list" aria-label="Players ranked by handicap index"></div>
+      <div class="legend">
+        <span style="--c: var(--flight-a)">Flight A</span>
+        <span style="--c: var(--flight-b)">Flight B</span>
+        <span style="--c: var(--flight-c)">Flight C</span>
+        <span style="--c: var(--flight-d)">Flight D</span>
+        <span style="--c: transparent; margin-left:auto">Colour = flight by today's index</span>
+      </div>
+    </div>
+    <p class="note" id="note">Source: GHIN handicap revisions. Each week shows the index as of that Monday; between revisions (including the off-season) the last index carries forward. A “+” is a plus handicap.</p>
+  </main>
+
+  <script>
+    (async function () {
+      const $ = id => document.getElementById(id);
+      const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const fmt = v => (v == null ? '—' : v < 0 ? `+${(-v).toFixed(1)}` : v.toFixed(1));
+      const dateLabel = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      let data;
+      try {
+        // Bump ?v= with each data refresh: Hostinger's CDN caches by URL
+        data = await (await fetch('data.json?v=20261026')).json();
+      } catch (e) {
+        $('chart').innerHTML = '<p class="error">Could not load the handicap history.</p>';
+        return;
+      }
+      const { weeks, players } = data;
+      const max = Math.ceil(Math.max(...players.flatMap(p => p.values.filter(v => v != null))) / 5) * 5;
+      const rowH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row')) || 34;
+
+      $('chart').innerHTML = players.map((p, i) => `
+        <div class="bar-row" role="listitem" data-i="${i}">
+          <span class="rank"></span>
+          <span class="name">${esc(p.name)}</span>
+          <span class="track"><span class="bar flight-${p.flight}"></span><span class="value"></span></span>
+        </div>`).join('');
+      const rows = [...document.querySelectorAll('.bar-row')];
+      $('scrub').max = weeks.length - 1;
+
+      let week = weeks.length - 1;
+      function draw() {
+        const order = players.map((p, i) => i)
+          .sort((a, b) => (players[a].values[week] ?? 99) - (players[b].values[week] ?? 99) || players[a].name.localeCompare(players[b].name));
+        const h = rowH();
+        $('chart').style.height = `${players.length * h}px`;
+        order.forEach((i, rank) => {
+          const v = players[i].values[week];
+          const pct = v == null ? 0 : Math.max(v, 0) / max * 100;
+          const row = rows[i];
+          row.style.transform = `translateY(${rank * h}px)`;
+          row.querySelector('.rank').textContent = rank + 1;
+          row.querySelector('.bar').style.width = `${pct}%`;
+          const label = row.querySelector('.value');
+          label.textContent = fmt(v);
+          label.style.left = `${pct}%`;
+          row.setAttribute('aria-label', `${rank + 1}. ${players[i].name}, ${fmt(v)}`);
+        });
+        const top = players[order[0]];
+        $('date').textContent = dateLabel(weeks[week]);
+        $('leader').textContent = `Low man: ${top.name} (${fmt(top.values[week])})`;
+        $('scrub').value = week;
+      }
+
+      let timer = null;
+      const step = () => Number($('speed').value);
+      function stop() { clearInterval(timer); timer = null; $('play').textContent = 'Play'; }
+      function start() {
+        if (week >= weeks.length - 1) week = 0;
+        document.documentElement.style.setProperty('--step', `${step()}ms`);
+        $('play').textContent = 'Pause';
+        draw();
+        timer = setInterval(() => {
+          if (week >= weeks.length - 1) { stop(); return; }
+          week++;
+          draw();
+        }, step());
+      }
+      $('play').addEventListener('click', () => (timer ? stop() : start()));
+      $('speed').addEventListener('change', () => { if (timer) { stop(); start(); } });
+      $('scrub').addEventListener('input', e => { stop(); week = Number(e.target.value); draw(); });
+      window.addEventListener('resize', draw);
+      draw();  // open on today's standings
+    })();
+  </script>
+</body>
+</html>
