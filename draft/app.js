@@ -12,8 +12,8 @@ import {
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem, setupProblems, groupsFromDraft, flightsByHandicap,
-} from './draftLogic.js?v=20261023c';
-import { netHoles, openSystem, ryderCaptains } from './flights.js?v=20261023c';
+} from './draftLogic.js?v=20261027a';
+import { netHoles, openSystem, ryderCaptains } from './flights.js?v=20261027a';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -250,6 +250,8 @@ $('saveButton').addEventListener('click', () => withBusy(async () => {
   const savedAt = new Date().toISOString();
   await updateDoc(roundRef, {
     groups,
+    // Ryder Cup: the two sides' names, for the app's Ryder Cup scoreboard
+    ...(draft.format === 'ryder' ? { ryderTeams: draft.teams.map(t => ({ teamId: t.teamId, name: t.name })) } : {}),
     draftId: draft.id,
     draftSavedBy: savedBy,
     draftSavedAt: savedAt,
