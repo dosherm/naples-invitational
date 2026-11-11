@@ -5,7 +5,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
 import {
-  getFirestore, collection, doc, onSnapshot, query, orderBy, limit, runTransaction, updateDoc,
+  getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, orderBy, limit, runTransaction, updateDoc,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
@@ -144,6 +144,8 @@ function startRun(kind) {
   game = { kind, captainId, sched: makeSchedule(seed), idx: 0, active: new Map(), score: 0, t0: performance.now() };
   $('score').textContent = '0';
   render();
+  // Bring the whole cabinet (timer, score and lawn) into view for the round
+  $('cab').scrollIntoView({ behavior: 'smooth', block: 'start' });
   requestAnimationFrame(frame);
   // Backup clock: animation frames stop when the screen dims or the tab is hidden,
   // and the round must still end on time and save
@@ -387,6 +389,33 @@ function watch() {
     }
     render();
   };
+  // Backup to the live listeners: on a phone the live connection can drop without
+  // any error (seen in iOS Safari), which would leave a captain waiting through Go.
+  // So re-read the draft every few seconds during the shootout and whenever the
+  // page comes back into view or the network returns.
+  const refresh = async () => {
+    if (game) return;
+    try {
+      if (id || draft?.id) {
+        const snap = await getDoc(doc(db, 'drafts', id || draft.id));
+        const d = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        if (!id && d && !(d.shootout || d.status === 'shootout')) return;
+        if (d && draft && d.id === draft.id) {
+          const fresh = await getDocs(collection(db, 'drafts', d.id, 'shootout'));
+          shots = Object.fromEntries(fresh.docs.map(x => [x.id, x.data()]));
+        }
+        onDraft(d);
+      } else {
+        const snap = await getDocs(query(collection(db, 'drafts'), orderBy('createdAt', 'desc'), limit(1)));
+        const d = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+        if (d && (d.shootout || d.status === 'shootout')) onDraft(d);
+      }
+    } catch (e) { console.error('Refresh failed:', e); }
+  };
+  setInterval(() => { if (!draft || draft.status === 'shootout') refresh(); }, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  window.addEventListener('focus', refresh);
+  window.addEventListener('online', refresh);
   if (id) {
     unsubDraft = onSnapshot(doc(db, 'drafts', id), s => onDraft(s.exists() ? { id: s.id, ...s.data() } : null), fail);
   } else {
