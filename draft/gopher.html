@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Whack-a-Gopher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* Captains' phones: carnival sign, status ribbon, "which captain are you", arcade cabinet (HUD, 3x3 lawn, button), shootout board. */
+:root{
+  --night:#1a0a38; --plum:#36136f; --red:#ff4136; --gold:#ffcf33; --teal:#18d6c4; --cream:#fff4d6; --ink:#14072b;
+  --display:'Bungee','Impact',sans-serif; --body:'Fredoka','Trebuchet MS',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%;background:var(--night);color:var(--cream);font-family:var(--body);font-size:16px;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(90% 50% at 50% 0%,rgba(120,60,220,.45),transparent 70%),radial-gradient(80% 40% at 50% 100%,rgba(24,214,196,.14),transparent 70%)}
+.wrap{max-width:460px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom))}
+:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+
+.sign{position:relative;padding:22px 14px 20px;background:var(--red);border:4px solid var(--gold);border-radius:20px;text-align:center;box-shadow:0 6px 0 #8e1d17,0 14px 26px rgba(0,0,0,.45)}
+.sign h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(27px,9vw,40px);line-height:1;color:var(--cream);text-shadow:0 3px 0 #8e1d17}
+.sign p{margin:8px 0 0;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:13px;color:var(--gold)}
+.bulbs{position:absolute;left:12px;right:12px;height:8px;background:radial-gradient(circle,var(--gold) 0 3px,transparent 4px) 0 0/16px 8px repeat-x;animation:chase 1s steps(1) infinite}
+.bulbs.top{top:6px}.bulbs.bot{bottom:6px;animation-delay:.5s}
+@keyframes chase{0%{opacity:1}50%{opacity:.35}}
+
+.status{display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 14px;background:var(--ink);border:2px solid var(--teal);border-radius:14px}
+.chip{flex:none;font-family:var(--display);font-size:13px;padding:5px 11px;border-radius:999px;background:var(--teal);color:var(--ink)}
+.chip.live{background:var(--red);color:var(--cream)}
+.chip.final{background:var(--gold);color:var(--ink)}
+.stline{font-weight:700}
+.small{font-size:13px;color:#c9b8ee}
+
+.who{margin-top:14px;padding:14px;background:var(--ink);border:2px solid var(--gold);border-radius:16px}
+.who h2{margin:0 0 4px;font-family:var(--display);font-weight:400;font-size:18px;color:var(--gold)}
+.who .list{display:grid;gap:8px;margin-top:10px}
+.who button{padding:12px 14px;font:inherit;font-weight:700;font-size:17px;text-align:left;color:var(--ink);background:var(--cream);border:0;border-radius:12px;cursor:pointer}
+.who button:disabled{background:#4b3a69;color:#bfb0dc;cursor:not-allowed}
+.who button small{display:block;font-weight:400;font-size:13px}
+
+.cab{margin-top:14px;padding:12px 12px 16px;background:var(--plum);border:4px solid var(--teal);border-radius:22px;box-shadow:0 6px 0 #1e0a40}
+.me{margin:0 0 10px;font-weight:700;color:var(--gold);text-align:center}
+.hud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.hud div{padding:6px 4px 4px;background:var(--ink);border-radius:12px;text-align:center}
+.hud small{display:block;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--teal)}
+.hud b{display:block;font-family:var(--display);font-weight:400;font-size:28px;line-height:1.1;color:var(--gold);font-variant-numeric:tabular-nums}
+.floor{position:relative;padding:14px 12px 8px;border-radius:14px;border:3px solid #1f6e2c;background:repeating-linear-gradient(90deg,#3aa84c 0 44px,#33973f 44px 88px)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 6px}
+.hole{position:relative;aspect-ratio:1/.96;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;cursor:pointer}
+.hole svg.hs{display:block;width:100%;height:100%;overflow:visible}
+.gg{transform:translateY(70px);transition:transform .08s ease-out}
+.hole.up .gg{transform:translateY(0)}
+.hole.hit .gg{animation:bonk .38s ease-in forwards}
+@keyframes bonk{0%{transform:translateY(0)}30%{transform:translateY(4px)}100%{transform:translateY(70px)}}
+.eyes-d{display:none}
+.hole.hit .eyes-n{display:none}
+.hole.hit .eyes-d{display:inline}
+.fx{position:absolute;left:50%;top:6%;z-index:5;font-family:var(--display);font-size:26px;color:var(--gold);text-shadow:0 2px 0 var(--ink),0 0 8px var(--ink);pointer-events:none;animation:floaty .6s ease-out forwards}
+@keyframes floaty{0%{transform:translate(-50%,0) scale(.6);opacity:1}100%{transform:translate(-50%,-34px) scale(1.2);opacity:0}}
+
+.overlay{position:absolute;inset:0;z-index:10;display:grid;place-content:center;gap:8px;padding:16px;text-align:center;background:rgba(20,7,43,.92);border-radius:12px}
+.overlay h2{margin:0;font-family:var(--display);font-weight:400;font-size:28px;color:var(--gold)}
+.overlay .big{font-family:var(--display);font-size:64px;line-height:1;color:var(--cream);font-variant-numeric:tabular-nums}
+.overlay p{margin:0;font-size:15px}
+
+.btn{display:block;width:100%;margin-top:12px;padding:14px 18px;border:0;border-radius:16px;font-family:var(--display);font-size:21px;letter-spacing:.04em;color:var(--cream);background:var(--red);box-shadow:0 5px 0 #8e1d17;cursor:pointer}
+.btn:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px 0 #8e1d17}
+.btn:disabled{background:#6b5a86;color:#d6cbea;box-shadow:0 5px 0 #43345c;cursor:not-allowed}
+.btn.gold{background:var(--gold);color:var(--ink);box-shadow:0 5px 0 #a98100}
+.note{margin:10px 2px 0;font-size:14px;color:#d9ccf3}
+.note.warn{color:var(--gold)}
+
+.board{margin-top:16px;padding:14px;color:var(--ink);background:var(--cream);border:4px solid var(--gold);border-radius:20px;box-shadow:0 6px 0 #a98100}
+.board h2{margin:0;font-family:var(--display);font-weight:400;font-size:22px}
+.board .sub{margin:3px 0 10px;font-size:14px;color:#5a3a78}
+.board ol{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:8px 10px;background:#fff;border:2px dashed #d9c9a6;border-radius:12px}
+.row.mine{border:2px solid var(--teal)}
+.pick{min-width:58px;padding:5px 8px;font-family:var(--display);font-size:12px;text-align:center;color:var(--gold);background:var(--ink);border-radius:8px}
+.row.first .pick{background:var(--red);color:var(--cream)}
+.row.tie .pick{background:#8a5a00;color:var(--cream)}
+.nm{overflow:hidden;font-weight:700;text-overflow:ellipsis}
+.nm small{display:block;font-size:12px;font-weight:400;color:#6d5a85}
+.pts{font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums;text-align:right}
+.pts small{display:block;font-family:var(--body);font-size:11px;font-weight:600;color:#6d5a85}
+.empty{margin:0;padding:10px 2px;color:#5a3a78}
+.foot{display:flex;justify-content:center;gap:10px;margin-top:18px}
+.foot a,.foot button{padding:8px 14px;font:inherit;font-size:13px;font-weight:600;color:var(--cream);background:transparent;border:2px solid var(--plum);border-radius:999px;cursor:pointer;text-decoration:none}
+.err{color:var(--gold);font-size:14px;text-align:center}
+
+@media (prefers-reduced-motion:reduce){.bulbs{animation:none}.gg{transition:none}.fx{animation-duration:.01s}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="sign">
+    <span class="bulbs top"></span>
+    <h1>Whack-a-Gopher</h1>
+    <p id="tag">Captains' shootout for draft order</p>
+    <span class="bulbs bot"></span>
+  </header>
+
+  <section class="status" aria-live="polite">
+    <span id="chip" class="chip">WAIT</span>
+    <div>
+      <div id="stline" class="stline">Connecting</div>
+      <div id="stsub" class="small"></div>
+    </div>
+  </section>
+
+  <section class="who" id="who" hidden>
+    <h2>Which captain are you?</h2>
+    <div class="small">Tap your name. This phone plays for you from now on.</div>
+    <div class="list" id="whoList"></div>
+  </section>
+
+  <section class="cab" id="cab" aria-label="Game">
+    <p class="me" id="me" hidden></p>
+    <div class="hud">
+      <div><small>Time</small><b id="time">30</b></div>
+      <div><small>Gophers</small><b id="score">0</b></div>
+      <div><small>Round</small><b id="mode" style="font-size:18px;line-height:1.55">—</b></div>
+    </div>
+    <div class="floor">
+      <div class="grid" id="grid"></div>
+      <div class="overlay" id="countdown" hidden>
+        <h2 id="cdTitle">Get ready</h2>
+        <div class="big" id="cdNum">5</div>
+        <p id="cdMsg">Gophers pop up when it hits zero.</p>
+      </div>
+      <div class="overlay" id="result" hidden>
+        <h2 id="rTitle">Time!</h2>
+        <div class="big" id="rScore">0</div>
+        <p id="rMsg"></p>
+        <button class="btn gold" id="retry" hidden style="margin-top:6px">Try saving again</button>
+      </div>
+    </div>
+    <button class="btn" id="play" disabled>Connecting</button>
+    <p class="note" id="hint">Tap each gopher before it ducks. 30 seconds a round. Everyone gets the same gophers.</p>
+  </section>
+
+  <section class="board" aria-live="polite">
+    <h2 id="bTitle">Shootout</h2>
+    <p class="sub" id="bSub"></p>
+    <ol id="rows"></ol>
+  </section>
+
+  <p class="err" id="err"></p>
+  <div class="foot">
+    <button id="snd" type="button">Sound: on</button>
+    <a href="./" id="boardLink">Draft board</a>
+  </div>
+</main>
+<!-- Bump ?v= on every change: Hostinger's CDN caches .js files and keys on the full URL -->
+<script type="module" src="gopher.js?v=20261111a"></script>
+</body>
+</html>

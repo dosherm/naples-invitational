@@ -7,13 +7,16 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
 import {
   getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, orderBy, limit, where,
-  setDoc, updateDoc, deleteDoc, runTransaction, serverTimestamp,
+  setDoc, updateDoc, deleteDoc, runTransaction, serverTimestamp, deleteField, writeBatch,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem, setupProblems, groupsFromDraft, flightsByHandicap,
-} from './draftLogic.js?v=20261027a';
-import { netHoles, openSystem, ryderCaptains } from './flights.js?v=20261027a';
+} from './draftLogic.js?v=20261111a';
+import { netHoles, openSystem, ryderCaptains } from './flights.js?v=20261111a';
+import {
+  COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
+} from './shootout.js?v=20261111a';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -35,6 +38,9 @@ const newId = () => doc(collection(db, 'drafts')).id;
 let isAdmin = false;
 let draft = null;           // the draft on screen
 let unsubscribe = null;     // its listener
+let shots = {};             // its shootout docs, captainId -> { uid, practice, runs }
+let unsubShots = null;
+let shotsFor = null;        // the draft id shots belong to
 let lastPickCount = 0;      // to highlight the newest pick
 let busy = false;
 
@@ -113,6 +119,7 @@ async function loadDraftPicker(selectedId) {
 $('draftPicker').addEventListener('change', e => watchDraft(e.target.value || null));
 
 function statusLabel(d) {
+  if (d.status === 'shootout') return 'shootout';
   if (d.status === 'saved') return 'saved to round';
   if (d.status === 'complete') return 'complete';
   return 'live';
@@ -120,14 +127,45 @@ function statusLabel(d) {
 
 // ---------- Rendering the board ----------
 
+function watchShots(d) {
+  const id = d?.shootout ? d.id : null;
+  if (id === shotsFor) return;
+  if (unsubShots) unsubShots();
+  unsubShots = null;
+  shots = {};
+  shotsFor = id;
+  if (id) {
+    unsubShots = onSnapshot(collection(db, 'drafts', id, 'shootout'), snap => {
+      shots = Object.fromEntries(snap.docs.map(x => [x.id, x.data()]));
+      render(draft);
+    }, fail);
+  }
+}
+
 function render(d) {
   draft = d;
+  watchShots(d);
   $('pageError').textContent = '';
   show($('empty'), !d);
   show($('board'), !!d);
   $('title').textContent = d ? d.roundName : 'Team Draft';
   $('subtitle').textContent = d ? `${d.tournamentName} · ${FORMATS[d.format].label}` : 'Waiting for the draft';
   if (!d) return;
+
+  const inShootout = d.status === 'shootout';
+  show($('shootoutCard'), inShootout);
+  show($('teams'), !inShootout);
+  show($('pool').closest('.card'), !inShootout);
+  show($('log').closest('.card'), !inShootout);
+  if (inShootout) {
+    $('status').classList.add('clock');
+    $('status').textContent = 'Captains are playing Whack-a-Gopher for the pick order';
+    show($('adminActions'), isAdmin);
+    $('undoButton').disabled = true;
+    show($('saveBar'), false);
+    renderShootout(d);
+    return;
+  }
 
   const onClock = teamOnClock(d);
   const done = isComplete(d);
@@ -188,6 +226,153 @@ function render(d) {
     return `<li>${esc(team?.name)} — ${esc(player?.name)} (${player?.flight})</li>`;
   }).join('') || '<li class="muted">No picks yet</li>';
 }
+
+// ---------- Shootout for pick order ----------
+
+const setHTML = (el, html) => { if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; } };
+const capName = id => draft?.players?.[id]?.name || id;
+const teamName = teamId => draft.teams.find(t => t.teamId === teamId)?.name || teamId;
+const names = ids => ids.map(capName).join(', ');
+
+function renderShootout(d) {
+  const r = currentRound(d);
+  const waiting = r >= 0 ? waitingOn(d, shots, r) : [];
+  const tie = nextTie(d, shots);
+  const settled = isSettled(d, shots);
+  const ryder = d.teams.some(t => t.captainIds.length > 1);
+
+  const link = new URL(`gopher.html?draft=${d.id}`, location.href).href;
+  $('gopherLink').href = link;
+  $('gopherLink').textContent = link.replace(/^https?:\/\//, '').replace(/\?.*$/, ''); // short to type; it opens the newest shootout
+  $('shootoutHelp').textContent = r < 0
+    ? 'Each captain picks their name on their phone and gets one practice run. When everyone is ready, Go starts the real round on every phone at once.'
+    : waiting.length ? `${r === 0 ? 'Real round' : `Sudden death ${r}`} is on. Waiting on ${names(waiting)}.`
+      : tie ? `${tie.map(teamName).join(' and ')} are tied. Sudden death settles it.`
+        : 'Every place is settled. Start the draft in this order.';
+  $('shootoutRoundHead').textContent = ryder ? 'Score (side total)' : 'Score';
+  document.querySelectorAll('.adminCol').forEach(el => show(el, isAdmin));
+
+  setHTML($('shootoutRows'), boardRows(d, shots).map(({ teamId, place, tied, provisional }) => {
+    const team = d.teams.find(t => t.teamId === teamId);
+    const total = r >= 0 ? rounds(d).map((_, i) => teamScore(team, shots, i)) : [];
+    return team.captainIds.map((id, i) => {
+      const shot = shots[id];
+      const runs = rounds(d).map((round, k) => {
+        if (!round.teamIds.includes(teamId)) return '';
+        const sc = runScore(shots, id, k);
+        return `${k ? `SD${k} ` : ''}${sc ?? (k === r ? '…' : '—')}`;
+      }).filter(Boolean).join(' · ');
+      const first = i === 0;
+      const buttons = !isAdmin || !shot ? '' : [
+        r >= 0 && runScore(shots, id, r) != null ? `<button type="button" class="secondary mini" data-cap-action="replay" data-cap="${id}">Replay</button>` : '',
+        r < 0 && shot.practice != null ? `<button type="button" class="secondary mini" data-cap-action="practice" data-cap="${id}">Practice again</button>` : '',
+        shot.uid ? `<button type="button" class="danger mini" data-cap-action="unlink" data-cap="${id}">Unlink phone</button>` : '',
+      ].join('');
+      const placeText = r < 0 || provisional ? '' : tied ? `Tied ${place}` : `Pick ${place}`;
+      return `<tr class="${tied ? 'tie' : ''}">
+        <td class="place">${first ? placeText : ''}</td>
+        <td>${first ? `${esc(team.name)}${ryder && total.some(x => x != null) ? `<div class="muted">Total ${total.map((x, k) => x == null ? '' : `${k ? `SD${k} ` : ''}${x}`).filter(Boolean).join(' · ')}</div>` : ''}` : ''}</td>
+        <td>${esc(capName(id))}</td>
+        <td>${shot?.uid ? '✓ linked' : '<span class="muted">not yet</span>'}</td>
+        <td>${shot?.practice ?? '<span class="muted">—</span>'}</td>
+        <td class="score">${runs}</td>
+        <td class="adminCol${isAdmin ? '' : ' hidden'}">${buttons}</td></tr>`;
+    }).join('');
+  }).join(''));
+
+  show($('shootoutAdmin'), isAdmin);
+  if (!isAdmin) return;
+  const linked = d.teams.flatMap(t => t.captainIds).filter(id => shots[id]?.uid).length;
+  const all = d.teams.flatMap(t => t.captainIds).length;
+  setHTML($('shootoutMain'), r < 0
+    ? `<button type="button" data-shootout="go" ${busy ? 'disabled' : ''}>Go! Start the real round</button><span class="muted">${linked} of ${all} captains linked</span>`
+    : waiting.length ? `<span class="muted">Waiting on ${esc(names(waiting))}. A captain whose phone missed the start can tap Play on it.</span>`
+      : tie ? `<button type="button" data-shootout="sudden" ${busy ? 'disabled' : ''}>Sudden death: ${esc(tie.map(teamName).join(' vs '))}</button>`
+        : settled ? `<button type="button" data-shootout="draft" ${busy ? 'disabled' : ''}>Start draft in this order</button>` : '');
+}
+
+const roundFor = teamIds => ({ teamIds, seed: newSeed(), goAt: Date.now() + COUNTDOWN_MS });
+const shotRef = id => doc(db, 'drafts', draft.id, 'shootout', id);
+
+// Clear `field` on every shootout doc in this draft (and optionally only for some captains)
+async function clearShots(fields, captainIds = Object.keys(shots)) {
+  const batch = writeBatch(db);
+  captainIds.filter(id => shots[id]).forEach(id => batch.update(shotRef(id), fields));
+  await batch.commit();
+}
+
+async function finishShootout() {
+  const order = standings(draft, shots).flat();
+  await updateDoc(doc(db, 'drafts', draft.id), {
+    teams: order.map(id => draft.teams.find(t => t.teamId === id)),
+    status: 'live',
+    'shootout.stage': 'done',
+    'shootout.order': order,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+$('shootoutCard').addEventListener('click', e => {
+  if (!isAdmin || !draft) return;
+  const cap = e.target.closest('[data-cap-action]');
+  const act = e.target.closest('[data-shootout]');
+  const r = currentRound(draft);
+  const draftRef = doc(db, 'drafts', draft.id);
+
+  if (cap) {
+    const id = cap.dataset.cap;
+    const action = cap.dataset.capAction;
+    if (action === 'replay' && confirm(`Clear ${capName(id)}'s score for this round so they can play it again?`)) {
+      withBusy(() => updateDoc(shotRef(id), { [`runs.${r}`]: deleteField() }));
+    } else if (action === 'practice') {
+      withBusy(() => updateDoc(shotRef(id), { practice: null }));
+    } else if (action === 'unlink' && confirm(`Unlink ${capName(id)}'s phone? Their scores stay, and they can pick their name again on any phone.`)) {
+      withBusy(() => updateDoc(shotRef(id), { uid: null }));
+    }
+    return;
+  }
+  if (!act) return;
+  const allTeams = draft.teams.map(t => t.teamId);
+  switch (act.dataset.shootout) {
+    case 'go': {
+      const missing = draft.teams.flatMap(t => t.captainIds).filter(id => !shots[id]?.uid);
+      if (missing.length && !confirm(`${names(missing)} ${missing.length === 1 ? 'hasn\'t' : 'haven\'t'} linked a phone yet. Start anyway? They can still play late.`)) return;
+      return withBusy(() => updateDoc(draftRef, { 'shootout.stage': 'live', 'shootout.rounds': [roundFor(allTeams)], updatedAt: serverTimestamp() }));
+    }
+    case 'sudden': {
+      const tie = nextTie(draft, shots);
+      if (!tie) return;
+      return withBusy(() => updateDoc(draftRef, { 'shootout.rounds': [...rounds(draft), roundFor(tie)], updatedAt: serverTimestamp() }));
+    }
+    case 'draft':
+      return withBusy(finishShootout);
+    case 'restart': {
+      if (r < 0) return alert('The real round hasn\'t started yet.');
+      if (!confirm(`Restart ${r === 0 ? 'the real round' : `sudden death ${r}`}? Scores from it are cleared and everyone in it plays again from a new countdown.`)) return;
+      const round = rounds(draft)[r];
+      const ids = draft.teams.filter(t => round.teamIds.includes(t.teamId)).flatMap(t => t.captainIds);
+      return withBusy(async () => {
+        await clearShots({ [`runs.${r}`]: deleteField() }, ids);
+        await updateDoc(draftRef, { 'shootout.rounds': [...rounds(draft).slice(0, r), roundFor(round.teamIds)], updatedAt: serverTimestamp() });
+      });
+    }
+    case 'practice':
+      if (!confirm('Go back to practice? All real-round and sudden-death scores are cleared. Practice scores and phone links stay.')) return;
+      return withBusy(async () => {
+        await clearShots({ runs: {} });
+        await updateDoc(draftRef, { 'shootout.stage': 'practice', 'shootout.rounds': [], updatedAt: serverTimestamp() });
+      });
+    case 'over':
+      if (!confirm('Start the shootout over? Every score, practice included, is cleared. Phones stay linked.')) return;
+      return withBusy(async () => {
+        await clearShots({ runs: {}, practice: null });
+        await updateDoc(draftRef, { 'shootout.stage': 'practice', 'shootout.rounds': [], updatedAt: serverTimestamp() });
+      });
+    case 'skip':
+      if (!confirm('Skip the rest of the shootout and draft in the order shown? Teams still tied keep their setup order.')) return;
+      return withBusy(finishShootout);
+  }
+});
 
 // ---------- Admin: picking ----------
 
@@ -279,6 +464,8 @@ $('deleteButton').addEventListener('click', () => {
   if (!confirm(`Delete this draft for ${draft.roundName}? Teams already saved to the round stay.`)) return;
   const id = draft.id;
   withBusy(async () => {
+    // Its shootout scores go with it
+    for (const shot of (await getDocs(collection(db, 'drafts', id, 'shootout'))).docs) await deleteDoc(shot.ref);
     await deleteDoc(doc(db, 'drafts', id));
     await loadDraftPicker();
     watchDraft(null);
@@ -399,6 +586,7 @@ function renderSetup() {
   const problems = setupProblems(draftPlayers(), $('formatSelect').value, setup.captains);
   $('setupProblems').innerHTML = problems.map(p => `<li>${esc(p)}</li>`).join('');
   $('startButton').disabled = problems.length > 0 || setup.rounds.length === 0;
+  $('shootoutButton').disabled = $('startButton').disabled;
 }
 
 $('flightRows').addEventListener('click', e => {
@@ -415,7 +603,10 @@ $('captainRows').addEventListener('change', e => {
   renderSetup();
 });
 
-$('startButton').addEventListener('click', async () => {
+$('startButton').addEventListener('click', () => startDraft(false));
+$('shootoutButton').addEventListener('click', () => startDraft(true));
+
+async function startDraft(withShootout) {
   const tournament = setup.tournaments.find(t => t.id === $('tournamentSelect').value);
   const round = setup.rounds.find(r => r.id === $('roundSelect').value);
   const format = $('formatSelect').value;
@@ -435,6 +626,7 @@ $('startButton').addEventListener('click', async () => {
   }));
   try {
     $('startButton').disabled = true;
+    $('shootoutButton').disabled = true;
     const ref = doc(collection(db, 'drafts'));
     await setDoc(ref, {
       tournamentId: tournament.id,
@@ -445,7 +637,8 @@ $('startButton').addEventListener('click', async () => {
       players,
       teams,
       picks: [],
-      status: 'live',
+      status: withShootout ? 'shootout' : 'live',
+      ...(withShootout ? { shootout: { stage: 'practice', rounds: [] } } : {}),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -458,8 +651,9 @@ $('startButton').addEventListener('click', async () => {
   } catch (error) {
     fail(error);
     $('startButton').disabled = false;
+    $('shootoutButton').disabled = false;
   }
-});
+}
 
 // ---------- Admin: end of round (promotion and relegation) ----------
 
