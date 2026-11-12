@@ -618,6 +618,14 @@ body { margin: 0; }
   color: rgba(255,255,255,0.6);
 }
 
+.planning-link {
+  display: block; text-align: center; padding: 14px 16px;
+  background: var(--ink); color: var(--gold-lt); text-decoration: none;
+  font-family: var(--ui); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+  border-top: 1px solid rgba(184,148,63,0.25); border-bottom: 1px solid rgba(184,148,63,0.25);
+}
+.planning-link:hover { color: #fff; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
   #nav { padding: 16px 24px; }
@@ -686,6 +694,7 @@ body { margin: 0; }
     <li><a href="#formats">Formats</a></li>
     <li><a href="#rules">Rules</a></li>
     <li><a href="#housing">Housing</a></li>
+    <li><a href="planning/">Trip Planning</a></li>
   </ul>
 </nav>
 
@@ -727,6 +736,9 @@ body { margin: 0; }
     </div>
   </div>
 </div>
+
+<!-- Organizer checklist; linked here so phones (no top menu) can reach it -->
+<a class="planning-link" href="planning/">Trip Planning Checklist &rsaquo;</a>
 
 <!-- ── STATS BAR ── -->
 <div class="stats-bar">
@@ -1156,6 +1168,7 @@ body { margin: 0; }
   <p class="footer-dates">January 6–9, 2027 &nbsp;·&nbsp; Southwest Florida</p>
   <div class="footer-rule"></div>
   <p class="footer-note">A private invitational</p>
+  <p class="footer-note" style="margin-top:14px"><a href="planning/" style="color:var(--gold-lt)">Trip Planning Checklist</a></p>
 </footer>
 
 <script>
