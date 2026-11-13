@@ -9,7 +9,9 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
-} from './shootout.js?v=20261111a';
+  gopherAt, tapCounts, scoreTaps, packTaps, officialShots, checking,
+} from './shootout.js?v=20261113b';
+import { now, syncClock } from './clock.js?v=20261113a';
 
 const app = initializeApp({
   apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0',
@@ -25,7 +27,9 @@ const AUTO_START_GRACE = 4000; // a phone that sees Go this late still starts by
 
 let uid = null;
 let draft = null;   // the draft doc
-let shots = {};     // captainId -> shootout doc
+let shots = {};     // captainId -> shootout doc (what each phone saved)
+let verified = {};  // captainId -> server-checked runs (what counts)
+let unsubVerified = null;
 let game = null;    // the run in progress
 let muted = false;
 let unsubDraft = null;
@@ -141,7 +145,8 @@ function startRun(kind) {
   $('countdown').hidden = true;
   $('result').hidden = true;
   const seed = kind === 'practice' ? PRACTICE_SEED : rounds(draft)[kind].seed;
-  game = { kind, captainId, sched: makeSchedule(seed), idx: 0, active: new Map(), score: 0, t0: performance.now() };
+  // taps: every tap as [ms since the start, hole], saved with the score so the server can check it
+  game = { kind, captainId, sched: makeSchedule(seed), idx: 0, active: new Map(), hit: new Set(), taps: [], score: 0, t0: performance.now() };
   $('score').textContent = '0';
   render();
   // Bring the whole cabinet (timer, score and lawn) into view for the round
@@ -172,7 +177,12 @@ $('grid').addEventListener('pointerdown', e => {
   const h = e.target.closest('.hole');
   if (!h || !game) return;
   const i = Number(h.dataset.i);
-  if (!game.active.has(i)) return;
+  const ms = Math.round(performance.now() - game.t0);
+  game.taps.push([ms, i]);
+  // Scored by the gophers' timing (the same rule the server checks with), not by what's drawn
+  const g = gopherAt(game.sched, i, ms, game.hit);
+  if (!tapCounts(game.sched, g, ms)) return;
+  game.hit.add(g);
   game.active.delete(i);
   game.score++;
   h.classList.remove('up');
@@ -199,7 +209,7 @@ function endRun() {
   holes.forEach(h => h.classList.remove('up'));
   sfxEnd();
   $('time').textContent = '0';
-  const p = { captainId: g.captainId, kind: g.kind, s: g.score, t: Date.now() };
+  const p = { captainId: g.captainId, kind: g.kind, s: scoreTaps(g.sched, g.taps), taps: packTaps(g.taps), t: now() };
   writePending(p);
   $('rTitle').textContent = 'Time!';
   $('rScore').textContent = g.score;
@@ -216,11 +226,13 @@ async function savePending() {
   $('retry').hidden = true;
   try {
     const ref = doc(db, 'drafts', draft.id, 'shootout', p.captainId);
-    await updateDoc(ref, p.kind === 'practice' ? { practice: p.s } : { [`runs.${p.kind}`]: { s: p.s, t: p.t } });
+    await updateDoc(ref, p.kind === 'practice'
+      ? { practice: p.s, practiceTaps: p.taps || [] }
+      : { [`runs.${p.kind}`]: { s: p.s, t: p.t, taps: p.taps || [] } });
     writePending(null);
     $('rMsg').textContent = p.kind === 'practice'
       ? 'Practice done. That one doesn\'t count. Wait here for the real round.'
-      : 'Saved. Watch the board below for everyone else.';
+      : 'Saved. The server checks your run, then it counts. Watch the board below.';
   } catch (e) {
     console.error(e);
     $('rMsg').textContent = 'Couldn\'t save your score. Check your signal and tap Try again. It\'s kept on this phone until it saves.';
@@ -255,17 +267,20 @@ function action() {
   }
   const team = myTeam();
   if (!inRound(draft, team?.teamId, r)) {
-    return waitingOn(draft, shots, r).length
+    return waitingOn(draft, officialShots(shots, verified), r).length
       ? { label: 'Watching', status: 'Sudden death round', sub: 'You\'re through. Watch the tie get settled.' }
-      : { label: 'Watching', status: 'Round finished', sub: 'The organizer takes it from here.' };
+      : { label: 'Watching', status: 'Round finished', sub: 'Sudden death or the draft starts on its own.' };
   }
   const mine = runScore(shots, captainId, r);
   if (mine != null) {
-    const left = waitingOn(draft, shots, r).length;
-    return { label: `You scored ${mine}`, status: left ? `Waiting on ${left} more` : 'Round finished', sub: left ? '' : 'The organizer takes it from here.' };
+    const official = runScore(verified, captainId, r);
+    const left = waitingOn(draft, officialShots(shots, verified), r).length;
+    const sub = official == null ? 'Checking your run…'
+      : official !== mine ? `Official score after the server's check: ${official}` : left ? '' : 'Sudden death or the draft starts on its own.';
+    return { label: `You scored ${official ?? mine}`, status: left ? `Waiting on ${left} more` : 'Round finished', sub };
   }
   const goAt = rounds(draft)[r].goAt;
-  if (Date.now() < goAt) return { label: 'Get ready', status: r === 0 ? 'Real round starting' : 'Sudden death starting' };
+  if (now() < goAt) return { label: 'Get ready', status: r === 0 ? 'Real round starting' : 'Sudden death starting' };
   return { label: r === 0 ? 'Play my round' : 'Play sudden death', run: r, status: r === 0 ? 'Real round is on' : 'Sudden death is on', sub: 'Tap to play your one try.' };
 }
 
@@ -277,13 +292,13 @@ function armAutoStart() {
   const round = rounds(draft)[r];
   if (!inRound(draft, myTeam()?.teamId, r) || runScore(shots, captainId, r) != null) return hideCountdown();
   const key = `${r}:${round.goAt}`;
-  const wait = round.goAt - Date.now();
+  const wait = round.goAt - now();
   if (wait < -AUTO_START_GRACE) return hideCountdown(); // too late to start by itself; the button plays
   if (autoKey === key) return;
   autoKey = key;
   $('result').hidden = true;
   const tick = () => {
-    const left = round.goAt - Date.now();
+    const left = round.goAt - now();
     if (autoKey !== key) return;
     if (left <= 0) { hideCountdown(); startRun(r); return; }
     $('countdown').hidden = false;
@@ -335,9 +350,10 @@ function renderBoard() {
   if (!draft) { setHTML($('rows'), '<p class="empty">Nothing yet.</p>'); $('bSub').textContent = ''; return; }
   const r = currentRound(draft);
   const done = draft.status !== 'shootout';
+  const off = officialShots(shots, verified);
   const rows = done && draft.shootout?.order
     ? draft.shootout.order.map((teamId, i) => ({ teamId, place: i + 1 }))
-    : boardRows(draft, shots);
+    : boardRows(draft, off);
   $('bTitle').textContent = done ? 'Draft order' : r < 0 ? 'Captains' : 'Shootout';
   $('bSub').textContent = done ? 'Pick 1 chooses first.'
     : r < 0 ? 'Everyone gets one practice run, then the real round starts together.'
@@ -346,13 +362,14 @@ function renderBoard() {
   setHTML($('rows'), rows.map(({ teamId, place, tied, provisional }) => {
     const t = draft.teams.find(x => x.teamId === teamId);
     const pair = t.captainIds.length > 1;
-    const scores = rounds(draft).map((_, i) => teamScore(t, shots, i));
+    const scores = rounds(draft).map((_, i) => teamScore(t, off, i));
     const notes = t.captainIds.map(id => {
       const nm = pair ? `${nameOf(id).split(' ')[0]} ` : '';
       if (r < 0) return nm + (shots[id]?.uid ? (shots[id].practice != null ? 'practised' : 'ready to practise') : 'not here yet');
       if (!inRound(draft, teamId, r)) return '';
-      const s = runScore(shots, id, r);
-      return s == null ? `${nm}playing…` : pair ? `${nm}${s}` : '';
+      const s = runScore(off, id, r);
+      if (s == null) return checking(shots, verified, id, r) ? `${nm}checking…` : `${nm}playing…`;
+      return pair ? `${nm}${s}` : '';
     }).filter(Boolean);
     const main = r < 0 ? '' : scores[0] ?? '—';
     const sd = scores.slice(1).map((s, i) => inRound(draft, teamId, i + 1) ? `SD${i + 1}: ${s ?? '…'}` : '').filter(Boolean).join(' · ');
@@ -377,8 +394,14 @@ function watch() {
     draft = d;
     if (changed) {
       if (unsubShots) unsubShots();
+      if (unsubVerified) unsubVerified();
       shots = {};
+      verified = {};
       if (d) {
+        unsubVerified = onSnapshot(collection(db, 'drafts', d.id, 'verified'), snap => {
+          verified = Object.fromEntries(snap.docs.map(s => [s.id, s.data()]));
+          render();
+        }, fail);
         unsubShots = onSnapshot(collection(db, 'drafts', d.id, 'shootout'), snap => {
           shots = Object.fromEntries(snap.docs.map(s => [s.id, s.data()]));
           if (readPending()) savePending();
@@ -401,8 +424,12 @@ function watch() {
         const d = snap.exists() ? { id: snap.id, ...snap.data() } : null;
         if (!id && d && !(d.shootout || d.status === 'shootout')) return;
         if (d && draft && d.id === draft.id) {
-          const fresh = await getDocs(collection(db, 'drafts', d.id, 'shootout'));
+          const [fresh, checked] = await Promise.all([
+            getDocs(collection(db, 'drafts', d.id, 'shootout')),
+            getDocs(collection(db, 'drafts', d.id, 'verified')),
+          ]);
           shots = Object.fromEntries(fresh.docs.map(x => [x.id, x.data()]));
+          verified = Object.fromEntries(checked.docs.map(x => [x.id, x.data()]));
         }
         onDraft(d);
       } else {
@@ -430,6 +457,11 @@ function watch() {
 onAuthStateChanged(auth, user => {
   if (!user) { signInAnonymously(auth).catch(fail); return; }
   uid = user.uid;
-  if (!unsubDraft) watch();
+  if (!unsubDraft) {
+    watch();
+    // Google's clock for Go; again every few minutes in case the phone's clock drifts
+    syncClock(db, uid).then(render);
+    setInterval(() => syncClock(db, uid), 5 * 60 * 1000);
+  }
   render();
 });

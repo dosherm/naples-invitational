@@ -10,7 +10,14 @@
  *   shootout: { stage: 'practice' | 'live', rounds: [{ teamIds, seed, goAt }] }
  *   Round 0 is the real round for every team; later rounds are sudden death.
  * Per captain, drafts/{id}/shootout/{captainId} (the captain's phone writes):
- *   { uid, practice: score | null, runs: { '0': { s, t }, '1': ... } }
+ *   { uid, practice: score | null, runs: { '0': { s, t, taps: [packed taps] }, '1': ... } }
+ *   (each tap is one number, ms * 10 + hole: the database can't store lists of pairs)
+ * The server replays each run's taps and writes the official score to
+ * drafts/{id}/verified/{captainId} { runs: { '0': { s, claimed, t, taps } } }, which
+ * phones can't write. Standings use only those (officialShots).
+ *
+ * The server keeps a copy of this file (TournamentApp/functions/shared/shootout.js);
+ * change both together.
  */
 
 export const GAME_MS = 30000;
@@ -45,6 +52,73 @@ function rng(seed) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+// A tap this soon after a gopher pops up is faster than a person can react, so it
+// doesn't count (on the phone or when the server checks the run)
+export const MIN_REACT_MS = 100;
+const MAX_TAPS = 600;
+
+/** The schedule index of the gopher up in `hole` at `ms` that isn't hit yet, or -1. */
+export function gopherAt(sched, hole, ms, hit = new Set()) {
+  for (let i = 0; i < sched.length && sched[i].t <= ms; i++) {
+    const g = sched[i];
+    if (g.hole === hole && ms < g.t + g.dur && !hit.has(i)) return i;
+  }
+  return -1;
+}
+
+/** Whether a tap at `ms` on gopher `i` counts: the gopher is up and it wasn't too fast. */
+export const tapCounts = (sched, i, ms) => i >= 0 && ms - sched[i].t >= MIN_REACT_MS;
+
+/** Taps as stored: each [ms since the start, hole] packed into one number, ms * 10 + hole. */
+export const packTaps = taps => taps.map(([ms, hole]) => Math.round(ms) * 10 + hole);
+
+/** Stored taps back to [[ms, hole], ...] (pairs are passed through as they are). */
+export const unpackTaps = taps => (Array.isArray(taps) ? taps : [])
+  .map(x => (typeof x === 'number' ? [Math.floor(x / 10), x % 10] : x));
+
+/**
+ * The official score for a run: its taps (packed, or [[ms since the start, hole], ...])
+ * played against the round's gophers. Each gopher counts once.
+ */
+export function scoreTaps(sched, taps) {
+  if (!Array.isArray(taps)) return 0;
+  const hit = new Set();
+  unpackTaps(taps).slice(0, MAX_TAPS)
+    .filter(x => Array.isArray(x) && Number.isFinite(x[0]) && Number.isInteger(x[1]) && x[0] >= 0 && x[0] <= GAME_MS)
+    .sort((a, b) => a[0] - b[0])
+    .forEach(([ms, hole]) => {
+      const i = gopherAt(sched, hole, ms, hit);
+      if (tapCounts(sched, i, ms)) hit.add(i);
+    });
+  return hit.size;
+}
+
+/** Each captain with only the server-checked runs, for standings. */
+export function officialShots(shots, verified) {
+  const ids = new Set([...Object.keys(shots || {}), ...Object.keys(verified || {})]);
+  return Object.fromEntries([...ids].map(id => [id, { ...(shots?.[id] || {}), runs: verified?.[id]?.runs || {} }]));
+}
+
+/** The phone has saved a run in round `r` that the server hasn't checked yet. */
+export const checking = (shots, verified, captainId, r) =>
+  shots?.[captainId]?.runs?.[r] != null && verified?.[captainId]?.runs?.[r] == null;
+
+/**
+ * What should happen next in the shootout once scores change:
+ * 'wait' (a round is still being played), 'sudden' (with the tied team ids),
+ * 'finish' (with the pick order), or 'none' (practice, or already done).
+ */
+export function nextStep(draft, shots) {
+  if (draft.status !== 'shootout' || draft.shootout?.stage !== 'live') return { type: 'none' };
+  const r = currentRound(draft);
+  if (r < 0) return { type: 'none' };
+  if (waitingOn(draft, shots, r).length) return { type: 'wait' };
+  const tie = nextTie(draft, shots);
+  if (tie) return { type: 'sudden', teamIds: tie };
+  if (isSettled(draft, shots)) return { type: 'finish', order: standings(draft, shots).flat() };
+  return { type: 'wait' };
 }
 
 export const newSeed = () => Math.floor(Math.random() * 2147483646) + 1;

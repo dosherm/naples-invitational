@@ -51,6 +51,18 @@
       color: #fff;
     }
     button.secondary { background: #fff; color: var(--green); border: 1px solid var(--green); }
+    button.whatsapp { background: #1f8f4e; }
+    button.link { background: none; color: var(--green); border: 0; padding: 2px 4px; font-weight: 700; cursor: pointer; }
+    .records { margin: 0 0 8px; padding-left: 22px; line-height: 1.7; }
+    dialog#replayDialog { border: 0; border-radius: 14px; padding: 16px; width: min(360px, calc(100vw - 32px)); }
+    dialog#replayDialog::backdrop { background: rgba(0,0,0,.5); }
+    .rhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .rhead h2 { font-size: 16px; margin: 0; }
+    .rstats { display: flex; justify-content: space-between; margin: 10px 0; font-size: 15px; }
+    .rgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .rcell { aspect-ratio: 1; border-radius: 50%; background: #946030; box-shadow: inset 0 6px 0 #5e3818; display: flex; align-items: center; justify-content: center; font-size: 34px; color: #fff; }
+    .rcell.miss { font-size: 40px; color: #ffcdd2; }
+    .recap { font-size: 16px; line-height: 1.55; margin-bottom: 8px; }
     button.danger { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
     button:disabled { opacity: .45; cursor: not-allowed; }
     select, input {
@@ -265,6 +277,22 @@
         <p class="muted" id="saveNote">Saving makes these teams the round's playing groups.</p>
         <button type="button" id="saveButton">Save teams to round</button>
       </div>
+      <!-- Written by Claude once every pick is in; everyone sees it -->
+      <div id="recapCard" class="card hidden">
+        <h2>Draft recap <span class="muted">· written by Claude</span></h2>
+        <div id="recapText" class="recap"></div>
+        <p class="muted" id="recapStatus"></p>
+        <div class="row">
+          <button type="button" id="recapShare" class="whatsapp hidden">Share to WhatsApp</button>
+          <button type="button" id="recapAgain" class="secondary hidden">Write it again</button>
+        </div>
+      </div>
+      <div id="recordsCard" class="card hidden">
+        <h2>🐹 Gopher Hall of Fame</h2>
+        <ol id="recordsTop" class="records"></ol>
+        <p class="muted" id="recordsMore"></p>
+        <button type="button" id="recordsClear" class="secondary mini hidden">Clear records (after testing)</button>
+      </div>
       <div class="card">
         <h2>Available</h2>
         <div id="pool" class="pool"></div>
@@ -289,7 +317,18 @@
     <p class="error" id="pageError"></p>
   </main>
 
+  <!-- Watch a captain's shootout run back -->
+  <dialog id="replayDialog" aria-labelledby="replayTitle">
+    <div id="replayBody">
+      <div class="rhead"><h2 id="replayTitle">Replay</h2><button type="button" class="link" data-close aria-label="Close">✕</button></div>
+      <div class="rstats"><span>Score <b class="rscore">0</b></span><span>Time <b class="rtime">30</b></span></div>
+      <div class="rgrid"><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div><div class="rcell"></div></div>
+      <div class="row"><button type="button" class="secondary mini" data-speed="1">Real time</button><button type="button" class="secondary mini" data-speed="2">2×</button><button type="button" class="secondary mini" data-speed="4">4×</button></div>
+      <p class="muted">💥 a hit · a dot is a miss</p>
+    </div>
+  </dialog>
+
   <!-- Bump ?v= on every change: Hostinger's CDN caches .js files and keys on the full URL -->
-  <script type="module" src="app.js?v=20261111a"></script>
+  <script type="module" src="app.js?v=20261113b"></script>
 </body>
 </html>

@@ -16,7 +16,10 @@ import {
 import { netHoles, openSystem, ryderCaptains } from './flights.js?v=20261111a';
 import {
   COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
-} from './shootout.js?v=20261111a';
+  officialShots, checking,
+} from './shootout.js?v=20261113b';
+import { now, syncClock } from './clock.js?v=20261113a';
+import { playReplay } from './replay.js?v=20261113b';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -38,11 +41,15 @@ const newId = () => doc(collection(db, 'drafts')).id;
 let isAdmin = false;
 let draft = null;           // the draft on screen
 let unsubscribe = null;     // its listener
-let shots = {};             // its shootout docs, captainId -> { uid, practice, runs }
+let shots = {};             // its shootout docs, captainId -> { uid, practice, runs } (what phones saved)
+let verified = {};          // server-checked runs, captainId -> { runs } (what counts)
+let unsubVerified = null;
 let unsubShots = null;
 let shotsFor = null;        // the draft id shots belong to
 let lastPickCount = 0;      // to highlight the newest pick
 let busy = false;
+let records = null;         // Gopher Hall of Fame (stats/gopher, kept by the server)
+const ACCEPT_AFTER_MS = 20000; // offer to accept a phone's score if the server hasn't checked it by then
 
 function fail(error) {
   console.error(error);
@@ -63,6 +70,10 @@ onAuthStateChanged(auth, async user => {
   show($('adminBar'), isAdmin);
   show($('setup'), false);
   show($('endRound'), false);
+  // Google's clock, so the organizer's Go means the same moment on every phone
+  syncClock(db, user.uid);
+  watchRecords();
+  renderRecords();
   if (isAdmin) await loadDraftPicker();
   watchDraft(new URLSearchParams(location.search).get('draft'));
   watchFlights(new URLSearchParams(location.search).get('t') || NAPLES_TOURNAMENT_ID);
@@ -131,10 +142,17 @@ function watchShots(d) {
   const id = d?.shootout ? d.id : null;
   if (id === shotsFor) return;
   if (unsubShots) unsubShots();
+  if (unsubVerified) unsubVerified();
   unsubShots = null;
+  unsubVerified = null;
   shots = {};
+  verified = {};
   shotsFor = id;
   if (id) {
+    unsubVerified = onSnapshot(collection(db, 'drafts', id, 'verified'), snap => {
+      verified = Object.fromEntries(snap.docs.map(x => [x.id, x.data()]));
+      render(draft);
+    }, fail);
     unsubShots = onSnapshot(collection(db, 'drafts', id, 'shootout'), snap => {
       shots = Object.fromEntries(snap.docs.map(x => [x.id, x.data()]));
       render(draft);
@@ -220,6 +238,8 @@ function render(d) {
     return `<div><h4><span class="flight flight-${f}">${f}</span> Flight ${f}</h4>${chips.join('') || '<p class="muted">All picked</p>'}</div>`;
   }).join('');
 
+  renderRecap(d, done);
+
   $('log').innerHTML = d.picks.map(p => {
     const team = d.teams.find(t => t.teamId === p.teamId);
     const player = d.players[p.playerId];
@@ -235,10 +255,11 @@ const teamName = teamId => draft.teams.find(t => t.teamId === teamId)?.name || t
 const names = ids => ids.map(capName).join(', ');
 
 function renderShootout(d) {
+  const off = officialShots(shots, verified);
   const r = currentRound(d);
-  const waiting = r >= 0 ? waitingOn(d, shots, r) : [];
-  const tie = nextTie(d, shots);
-  const settled = isSettled(d, shots);
+  const waiting = r >= 0 ? waitingOn(d, off, r) : [];
+  const tie = nextTie(d, off);
+  const settled = isSettled(d, off);
   const ryder = d.teams.some(t => t.captainIds.length > 1);
 
   const link = new URL(`gopher.html?draft=${d.id}`, location.href).href;
@@ -247,24 +268,29 @@ function renderShootout(d) {
   $('shootoutHelp').textContent = r < 0
     ? 'Each captain picks their name on their phone and gets one practice run. When everyone is ready, Go starts the real round on every phone at once.'
     : waiting.length ? `${r === 0 ? 'Real round' : `Sudden death ${r}`} is on. Waiting on ${names(waiting)}.`
-      : tie ? `${tie.map(teamName).join(' and ')} are tied. Sudden death settles it.`
-        : 'Every place is settled. Start the draft in this order.';
+      : tie ? `${tie.map(teamName).join(' and ')} are tied. Sudden death starts on its own in a moment.`
+        : 'Every place is settled. The draft opens in this order on its own.';
   $('shootoutRoundHead').textContent = ryder ? 'Score (side total)' : 'Score';
   document.querySelectorAll('.adminCol').forEach(el => show(el, isAdmin));
 
-  setHTML($('shootoutRows'), boardRows(d, shots).map(({ teamId, place, tied, provisional }) => {
+  setHTML($('shootoutRows'), boardRows(d, off).map(({ teamId, place, tied, provisional }) => {
     const team = d.teams.find(t => t.teamId === teamId);
-    const total = r >= 0 ? rounds(d).map((_, i) => teamScore(team, shots, i)) : [];
+    const total = r >= 0 ? rounds(d).map((_, i) => teamScore(team, off, i)) : [];
     return team.captainIds.map((id, i) => {
       const shot = shots[id];
       const runs = rounds(d).map((round, k) => {
         if (!round.teamIds.includes(teamId)) return '';
-        const sc = runScore(shots, id, k);
-        return `${k ? `SD${k} ` : ''}${sc ?? (k === r ? '…' : '—')}`;
+        const sc = runScore(off, id, k);
+        const label = sc ?? (checking(shots, verified, id, k) ? '<span class="muted">checking…</span>' : k === r ? '…' : '—');
+        // Anyone can watch a checked run back
+        const watch = verified[id]?.runs?.[k]?.taps ? ` <button type="button" class="link mini" data-watch="${id}" data-round="${k}" aria-label="Watch ${esc(capName(id))}'s run">▶</button>` : '';
+        return `${k ? `SD${k} ` : ''}${label}${watch}`;
       }).filter(Boolean).join(' · ');
       const first = i === 0;
+      const stuck = r >= 0 && checking(shots, verified, id, r) && now() - (shot?.runs?.[r]?.t || 0) > ACCEPT_AFTER_MS;
       const buttons = !isAdmin || !shot ? '' : [
-        r >= 0 && runScore(shots, id, r) != null ? `<button type="button" class="secondary mini" data-cap-action="replay" data-cap="${id}">Replay</button>` : '',
+        stuck ? `<button type="button" class="mini" data-cap-action="accept" data-cap="${id}">Accept phone score (${shot.runs[r].s})</button>` : '',
+        r >= 0 && (runScore(off, id, r) != null || shot?.runs?.[r] != null) ? `<button type="button" class="secondary mini" data-cap-action="replay" data-cap="${id}">Redo</button>` : '',
         r < 0 && shot.practice != null ? `<button type="button" class="secondary mini" data-cap-action="practice" data-cap="${id}">Practice again</button>` : '',
         shot.uid ? `<button type="button" class="danger mini" data-cap-action="unlink" data-cap="${id}">Unlink phone</button>` : '',
       ].join('');
@@ -287,22 +313,26 @@ function renderShootout(d) {
   setHTML($('shootoutMain'), r < 0
     ? `<button type="button" data-shootout="go" ${busy ? 'disabled' : ''}>Go! Start the real round</button><span class="muted">${linked} of ${all} captains linked</span>`
     : waiting.length ? `<span class="muted">Waiting on ${esc(names(waiting))}. A captain whose phone missed the start can tap Play on it.</span>`
-      : tie ? `<button type="button" data-shootout="sudden" ${busy ? 'disabled' : ''}>Sudden death: ${esc(tie.map(teamName).join(' vs '))}</button>`
-        : settled ? `<button type="button" data-shootout="draft" ${busy ? 'disabled' : ''}>Start draft in this order</button>` : '');
+      : tie ? `<span class="muted">The server starts sudden death by itself. If it hasn't within a few seconds:</span><button type="button" data-shootout="sudden" ${busy ? 'disabled' : ''}>Sudden death: ${esc(tie.map(teamName).join(' vs '))}</button>`
+        : settled ? `<span class="muted">The server opens the draft by itself. If it hasn't within a few seconds:</span><button type="button" data-shootout="draft" ${busy ? 'disabled' : ''}>Start draft in this order</button>` : '');
 }
 
-const roundFor = teamIds => ({ teamIds, seed: newSeed(), goAt: Date.now() + COUNTDOWN_MS });
+const roundFor = teamIds => ({ teamIds, seed: newSeed(), goAt: now() + COUNTDOWN_MS });
 const shotRef = id => doc(db, 'drafts', draft.id, 'shootout', id);
 
 // Clear `field` on every shootout doc in this draft (and optionally only for some captains)
 async function clearShots(fields, captainIds = Object.keys(shots)) {
   const batch = writeBatch(db);
   captainIds.filter(id => shots[id]).forEach(id => batch.update(shotRef(id), fields));
+  // The server's checked copies go too (fields here only ever touch runs and practice)
+  const runFields = Object.fromEntries(Object.entries(fields).filter(([k]) => k.startsWith('runs')));
+  if (Object.keys(runFields).length) captainIds.filter(id => verified[id]).forEach(id => batch.update(verifiedRef(id), runFields));
   await batch.commit();
 }
+const verifiedRef = id => doc(db, 'drafts', draft.id, 'verified', id);
 
 async function finishShootout() {
-  const order = standings(draft, shots).flat();
+  const order = standings(draft, officialShots(shots, verified)).flat();
   await updateDoc(doc(db, 'drafts', draft.id), {
     teams: order.map(id => draft.teams.find(t => t.teamId === id)),
     status: 'live',
@@ -323,7 +353,13 @@ $('shootoutCard').addEventListener('click', e => {
     const id = cap.dataset.cap;
     const action = cap.dataset.capAction;
     if (action === 'replay' && confirm(`Clear ${capName(id)}'s score for this round so they can play it again?`)) {
-      withBusy(() => updateDoc(shotRef(id), { [`runs.${r}`]: deleteField() }));
+      withBusy(() => clearShots({ [`runs.${r}`]: deleteField() }, [id]));
+    } else if (action === 'accept') {
+      // Backup if the server can't check a run: take the phone's own score
+      const run = shots[id]?.runs?.[r];
+      if (run && confirm(`The server hasn't checked ${capName(id)}'s run. Accept the phone's score of ${run.s}?`)) {
+        withBusy(() => setDoc(verifiedRef(id), { runs: { [r]: { s: run.s, claimed: run.s, t: run.t, taps: run.taps || [], acceptedBy: 'organizer' } } }, { merge: true }));
+      }
     } else if (action === 'practice') {
       withBusy(() => updateDoc(shotRef(id), { practice: null }));
     } else if (action === 'unlink' && confirm(`Unlink ${capName(id)}'s phone? Their scores stay, and they can pick their name again on any phone.`)) {
@@ -340,7 +376,7 @@ $('shootoutCard').addEventListener('click', e => {
       return withBusy(() => updateDoc(draftRef, { 'shootout.stage': 'live', 'shootout.rounds': [roundFor(allTeams)], updatedAt: serverTimestamp() }));
     }
     case 'sudden': {
-      const tie = nextTie(draft, shots);
+      const tie = nextTie(draft, officialShots(shots, verified));
       if (!tie) return;
       return withBusy(() => updateDoc(draftRef, { 'shootout.rounds': [...rounds(draft), roundFor(tie)], updatedAt: serverTimestamp() }));
     }
@@ -416,8 +452,97 @@ $('undoButton').addEventListener('click', () => {
     const ref = doc(db, 'drafts', draft.id);
     const current = (await tx.get(ref)).data();
     if (current.picks.length !== expected) throw new Error('The draft changed; try again.');
-    tx.update(ref, { picks: current.picks.slice(0, -1), status: 'live', updatedAt: serverTimestamp() });
+    // The recap no longer matches the picks; it's rewritten when the draft completes again
+    tx.update(ref, { picks: current.picks.slice(0, -1), status: 'live', recap: deleteField(), recapError: deleteField(), recapStartedAt: deleteField(), updatedAt: serverTimestamp() });
   }));
+});
+
+// ---------- Draft recap by Claude (written by the server) ----------
+
+const WHATSAPP_FOOTER = '\n\n📋 Full draft board: naples.bourbonbogeys.com/draft/';
+// *bold* is WhatsApp's bold; show it the same way here
+const recapHTML = text => esc(text).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+
+// The server writes drafts/{id}.recap once the last pick is in (or recapError if Claude
+// couldn't); clearing both asks it to write a new one.
+function renderRecap(d, done) {
+  const text = d.recap?.text || '';
+  show($('recapCard'), !!text || done);
+  setHTML($('recapText'), text ? recapHTML(text) : '');
+  show($('recapShare'), !!text);
+  show($('recapAgain'), isAdmin && done && (!!text || !!d.recapError));
+  $('recapAgain').textContent = text ? 'Write it again' : 'Try again';
+  $('recapStatus').textContent = text ? ''
+    : d.recapError ? (isAdmin ? `Claude couldn't write it: ${d.recapError}` : 'The recap is on its way.')
+      : 'Claude is writing the recap…';
+}
+
+$('recapAgain').addEventListener('click', () => {
+  if (!draft || !isAdmin) return;
+  withBusy(() => updateDoc(doc(db, 'drafts', draft.id), { recap: deleteField(), recapError: deleteField(), recapStartedAt: deleteField(), updatedAt: serverTimestamp() }));
+});
+$('recapShare').addEventListener('click', () => {
+  if (!draft?.recap?.text) return;
+  // WhatsApp asks which chat (pick the trip group), then the text is ready to send
+  window.open(`https://wa.me/?text=${encodeURIComponent(draft.recap.text + WHATSAPP_FOOTER)}`, '_blank');
+});
+
+// ---------- Watching a run back ----------
+
+let stopReplay = null;
+let replaying = null; // { id, round }
+
+function openReplay(id, round, speed = 1) {
+  const run = verified[id]?.runs?.[round];
+  const seed = rounds(draft)[round]?.seed;
+  if (!run?.taps || !seed) return;
+  replaying = { id, round };
+  $('replayTitle').textContent = `${capName(id)} · ${round ? `sudden death ${round}` : 'real round'} · scored ${run.s}`;
+  if (stopReplay) stopReplay();
+  stopReplay = playReplay($('replayBody'), { seed, taps: run.taps, speed });
+  if (!$('replayDialog').open) $('replayDialog').showModal();
+}
+
+$('shootoutRows').addEventListener('click', e => {
+  const b = e.target.closest('[data-watch]');
+  if (b) openReplay(b.dataset.watch, Number(b.dataset.round));
+});
+$('replayDialog').addEventListener('click', e => {
+  const sp = e.target.closest('[data-speed]');
+  if (sp && replaying) openReplay(replaying.id, replaying.round, Number(sp.dataset.speed));
+  if (e.target.closest('[data-close]') || e.target === $('replayDialog')) $('replayDialog').close();
+});
+$('replayDialog').addEventListener('close', () => { if (stopReplay) stopReplay(); stopReplay = null; replaying = null; });
+
+// ---------- Gopher Hall of Fame (kept by the server in stats/gopher) ----------
+
+let unsubRecords = null;
+function watchRecords() {
+  if (unsubRecords) return;
+  unsubRecords = onSnapshot(doc(db, 'stats', 'gopher'), snap => { records = snap.data() || null; renderRecords(); }, fail);
+}
+
+// The board otherwise redraws only when something changes; during the shootout it
+// also needs the clock (the organizer's "Accept phone score" backup appears after a wait)
+setInterval(() => { if (draft?.status === 'shootout') render(draft); }, 5000);
+
+function renderRecords() {
+  const top = records?.top || [];
+  show($('recordsCard'), top.length > 0 || !!records?.worstPractice);
+  const line = (e, i) => `<li><b>${e.s}</b> ${esc(e.name)} <span class="muted">· ${esc(e.roundName || '')}${e.round ? ` · sudden death ${e.round}` : ''}</span>${i === 0 ? ' 👑' : ''}</li>`;
+  setHTML($('recordsTop'), top.slice(0, 5).map(line).join('') || '<li class="muted">No real rounds yet</li>');
+  const sd = records?.bestSuddenDeath;
+  const wp = records?.worstPractice;
+  $('recordsMore').innerHTML = [
+    sd ? `Clutch: <b>${sd.s}</b> by ${esc(sd.name)} in sudden death` : '',
+    wp ? `Worst practice run: <b>${wp.s}</b> by ${esc(wp.name)} 🙈` : '',
+  ].filter(Boolean).join('<br>');
+  show($('recordsClear'), isAdmin);
+}
+
+$('recordsClear').addEventListener('click', () => {
+  if (!isAdmin || !confirm('Clear the Gopher Hall of Fame? Use this after testing. Real scores played later start it again.')) return;
+  withBusy(() => deleteDoc(doc(db, 'stats', 'gopher')));
 });
 
 // ---------- Admin: saving to the round ----------
