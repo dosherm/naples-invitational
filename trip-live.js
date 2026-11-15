@@ -1,7 +1,9 @@
 // Keeps the home page's schedule, course cards, day-by-day formats and
 // countdown in step with the golf app (the same data the Purse & Payouts page
 // reads): each day's date, course and team game come from the tournament's
-// rounds and games. The text already in the page stays if this can't load.
+// rounds and games. The players' handicaps and flights come from naples_players,
+// which the 6 am GHIN run updates. The text already in the page stays if this
+// can't load.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
 import { getFirestore, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
@@ -48,7 +50,32 @@ async function update() {
   if (days[0]?.course) set(document.querySelector('.countdown-label'), `First Tee · ${days[0].course}`);
 }
 
+// The field: each card's HCP from the Naples list, then cards re-sorted lowest
+// first and flights relabelled A1-D4 (four to a flight), as the draft page does
+async function updatePlayers() {
+  const index = {};
+  (await getDocs(collection(db, 'naples_players'))).docs.forEach(d => {
+    const p = d.data();
+    if (p.name && typeof p.handicap_index === 'number') index[p.name] = p.handicap_index;
+  });
+  const grid = document.querySelector('.players-grid');
+  if (!grid) return;
+  const cards = [...grid.querySelectorAll('.player-card')].map(card => {
+    const name = card.querySelector('.player-name')?.textContent.trim();
+    const hcp = card.querySelector('.player-hcp');
+    const shown = parseFloat(hcp?.lastChild?.textContent);
+    const hi = index[name] ?? shown;
+    if (hcp && hi !== shown) hcp.lastChild.textContent = String(hi);
+    return { card, hi };
+  });
+  cards.sort((a, b) => a.hi - b.hi).forEach(({ card }, i) => {
+    set(card.querySelector('.player-flight'), 'ABCD'[Math.floor(i / 4)] + (i % 4 + 1));
+    grid.appendChild(card);
+  });
+}
+
 onAuthStateChanged(auth, user => {
   if (!user) { signInAnonymously(auth).catch(e => console.error(e)); return; }
   update().catch(e => console.error('Trip details not refreshed:', e));
+  updatePlayers().catch(e => console.error('Handicaps not refreshed:', e));
 });
