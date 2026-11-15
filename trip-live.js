@@ -1,12 +1,13 @@
 // Keeps the home page's schedule, course cards, day-by-day formats and
 // countdown in step with the golf app (the same data the Purse & Payouts page
 // reads): each day's date, course and team game come from the tournament's
-// rounds and games. The players' handicaps and flights come from naples_players,
-// which the 6 am GHIN run updates. The text already in the page stays if this
+// rounds and games. The players' handicaps and flights come from the trip's
+// players in the app (players/{id}.handicapIndex, the one copy of everyone's
+// index, which the 6 am GHIN run updates); each card is matched by data-ghin. The text already in the page stays if this
 // can't load.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
-import { getFirestore, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 
 const NAPLES = 'Qzidv9FRVnFu11y4jdhG';
 // Same names as purse/app.js
@@ -54,17 +55,17 @@ async function update() {
 // first and flights relabelled A1-D4 (four to a flight), as the draft page does
 async function updatePlayers() {
   const index = {};
-  (await getDocs(collection(db, 'naples_players'))).docs.forEach(d => {
-    const p = d.data();
-    if (p.name && typeof p.handicap_index === 'number') index[p.name] = p.handicap_index;
-  });
+  const ids = (await getDoc(doc(db, 'tournaments', NAPLES))).data()?.players || [];
+  await Promise.all(ids.map(async id => {
+    const p = (await getDoc(doc(db, 'players', id))).data();
+    if (p?.ghin && typeof p.handicapIndex === 'number') index[String(p.ghin)] = p.handicapIndex;
+  }));
   const grid = document.querySelector('.players-grid');
   if (!grid) return;
   const cards = [...grid.querySelectorAll('.player-card')].map(card => {
-    const name = card.querySelector('.player-name')?.textContent.trim();
     const hcp = card.querySelector('.player-hcp');
     const shown = parseFloat(hcp?.lastChild?.textContent);
-    const hi = index[name] ?? shown;
+    const hi = index[card.dataset.ghin] ?? shown;
     if (hcp && hi !== shown) hcp.lastChild.textContent = String(hi);
     return { card, hi };
   });

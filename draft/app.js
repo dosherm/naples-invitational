@@ -646,19 +646,15 @@ async function loadTournament() {
   setup.rounds = roundsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.roundNumber || 0) - (b.roundNumber || 0));
   $('roundSelect').innerHTML = setup.rounds.map(r => `<option value="${r.id}">${esc(r.name || `Round ${r.roundNumber}`)}</option>`).join('');
 
-  // Handicaps: the Naples list is refreshed from GHIN daily, so prefer it.
-  const naples = {};
-  (await getDocs(collection(db, 'naples_players'))).docs.forEach(d => {
-    const p = d.data();
-    if (p.ghin) naples[String(p.ghin)] = p.handicap_index;
-  });
+  // Handicaps: each player's index in the app (players/{id}.handicapIndex), the one
+  // copy everything reads; the 6 am GHIN run keeps it current
   setup.players = {};
   await Promise.all((tournament.players || []).map(async id => {
     const p = (await getDoc(doc(db, 'players', id))).data() || {};
     setup.players[id] = {
       name: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim() || id,
       lastName: p.lastName || '',
-      handicapIndex: naples[String(p.ghin)] ?? p.handicapIndex ?? null,
+      handicapIndex: p.handicapIndex ?? null,
     };
   }));
 
