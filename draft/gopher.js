@@ -5,13 +5,13 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, orderBy, limit, runTransaction, updateDoc,
+  getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, where, runTransaction, updateDoc,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
   gopherAt, tapCounts, scoreTaps, packTaps, officialShots, checking,
-} from './shootout.js?v=20261113b';
-import { now, syncClock } from './clock.js?v=20261113a';
+} from './shootout.js?v=e0c82a7d1f';
+import { now, syncClock } from './clock.js?v=e0c82a7d1f';
 
 const app = initializeApp({
   apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0',
@@ -21,7 +21,15 @@ const app = initializeApp({
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// The trip this page is for (?t= for another trip, such as the test copy), so a
+// draft made for a different trip never shows up on the captains' phones
+const TRIP_ID = new URLSearchParams(location.search).get('t') || 'Qzidv9FRVnFu11y4jdhG';
+const tripDrafts = () => query(collection(db, 'drafts'), where('tournamentId', '==', TRIP_ID));
+const newestOf = snap => snap.docs.map(x => ({ id: x.id, ...x.data() }))
+  .sort((a, b) => (b.createdAt?.toMillis?.() ?? Infinity) - (a.createdAt?.toMillis?.() ?? Infinity))[0] || null;
+
 const $ = id => document.getElementById(id);
+$('boardLink').href = `./?t=${TRIP_ID}`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const AUTO_START_GRACE = 4000; // a phone that sees Go this late still starts by itself
 
@@ -407,7 +415,7 @@ function watch() {
           if (readPending()) savePending();
           render();
         }, fail);
-        $('boardLink').href = `./?draft=${d.id}`;
+        $('boardLink').href = `./?draft=${d.id}&t=${d.tournamentId}`;
       }
     }
     render();
@@ -433,8 +441,7 @@ function watch() {
         }
         onDraft(d);
       } else {
-        const snap = await getDocs(query(collection(db, 'drafts'), orderBy('createdAt', 'desc'), limit(1)));
-        const d = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+        const d = newestOf(await getDocs(tripDrafts()));
         if (d && (d.shootout || d.status === 'shootout')) onDraft(d);
       }
     } catch (e) { console.error('Refresh failed:', e); }
@@ -446,9 +453,9 @@ function watch() {
   if (id) {
     unsubDraft = onSnapshot(doc(db, 'drafts', id), s => onDraft(s.exists() ? { id: s.id, ...s.data() } : null), fail);
   } else {
-    // The newest draft: the one being set up right now
-    unsubDraft = onSnapshot(query(collection(db, 'drafts'), orderBy('createdAt', 'desc'), limit(1)), snap => {
-      const d = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+    // This trip's newest draft: the one being set up right now
+    unsubDraft = onSnapshot(tripDrafts(), snap => {
+      const d = newestOf(snap);
       onDraft(d && (d.shootout || d.status === 'shootout') ? d : null);
     }, fail);
   }
