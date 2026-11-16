@@ -97,6 +97,7 @@
     .teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .team { background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 12px; }
     .team.clock { border-color: var(--gold); box-shadow: 0 0 0 3px #fff3c4; }
+    .team .why { margin: -4px 0 8px; font-size: 12px; }
     .team h3 { margin: 0 0 8px; font-size: 16px; display: flex; justify-content: space-between; gap: 8px; }
     .slot { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); }
     .slot:first-of-type { border-top: 0; }
@@ -193,50 +194,7 @@
       <div class="row">
         <strong>Draft:</strong>
         <select id="draftPicker"></select>
-        <button type="button" class="secondary" id="newDraftButton">New draft</button>
-        <button type="button" class="secondary" id="endRoundButton">End of round</button>
         <span class="muted" id="adminWho"></span>
-      </div>
-    </section>
-
-    <!-- Admin: set up a new draft -->
-    <section id="setup" class="card hidden">
-      <h2>New draft</h2>
-      <div class="row">
-        <label>Tournament <select id="tournamentSelect"></select></label>
-        <label>Round <select id="roundSelect"></select></label>
-        <label>Format <select id="formatSelect"></select></label>
-      </div>
-      <h2 style="margin-top:16px">Flights</h2>
-      <p class="muted">Every team gets the same number of players from each flight. Filled in from the last draft, or by handicap index for the first one.</p>
-      <div id="flightCounts" class="row muted"></div>
-      <table>
-        <thead><tr><th>Player</th><th>HCP</th><th>Flight</th></tr></thead>
-        <tbody id="flightRows"></tbody>
-      </table>
-      <h2 style="margin-top:16px">Captains</h2>
-      <p class="muted">Captains count as their own flight and can't be picked. Start a shootout to let the captains play Whack-a-Gopher for the pick order, or start the draft with Team 1 picking first.</p>
-      <div id="captainRows"></div>
-      <ul class="problems" id="setupProblems"></ul>
-      <div class="row" style="margin-top:12px">
-        <button type="button" id="shootoutButton">Start shootout for pick order</button>
-        <button type="button" class="secondary" id="startButton">Start draft in this order</button>
-        <button type="button" class="secondary" id="cancelSetup">Cancel</button>
-      </div>
-    </section>
-
-    <!-- Admin: promotion and relegation after a round -->
-    <section id="endRound" class="card hidden">
-      <h2>End of round</h2>
-      <p class="muted">Ranks each flight by individual net (countback from 18 breaks ties), then moves the best in B, C and D up and the worst in A, B and C down.</p>
-      <div class="row">
-        <label>Tournament <select id="endTournament"></select></label>
-        <label>Round played <select id="endRoundSelect"></select></label>
-      </div>
-      <div id="endRoundBody" style="margin-top:12px"></div>
-      <div class="row" style="margin-top:12px">
-        <button type="button" id="confirmEndRound" disabled>Save flights</button>
-        <button type="button" class="secondary" id="cancelEndRound">Close</button>
       </div>
     </section>
 
@@ -270,6 +228,8 @@
           </details>
         </div>
       </div>
+      <!-- A captain links this phone to their name to make their team's picks -->
+      <div id="captainLink" class="card hidden"></div>
       <div id="teams" class="teams"></div>
       <!-- Only once every pick is in, and away from Undo -->
       <div id="saveBar" class="card hidden">
@@ -294,7 +254,7 @@
         <button type="button" id="recordsClear" class="secondary mini hidden">Clear records (after testing)</button>
       </div>
       <div class="card">
-        <h2>Available</h2>
+        <h2 id="poolTitle">Available</h2>
         <div id="pool" class="pool"></div>
       </div>
       <div class="card">
@@ -329,6 +289,6 @@
   </dialog>
 
   <!-- Bump ?v= on every change: Hostinger's CDN caches .js files and keys on the full URL -->
-  <script type="module" src="app.js?v=20261115a"></script>
+  <script type="module" src="app.js?v=20261116a"></script>
 </body>
 </html>
