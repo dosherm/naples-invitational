@@ -10,8 +10,8 @@ import {
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
   gopherAt, tapCounts, scoreTaps, packTaps, officialShots, checking,
-} from './shootout.js?v=d4f512d8da';
-import { now, syncClock } from './clock.js?v=d4f512d8da';
+} from './shootout.js?v=d3e5ddccb3';
+import { now, syncClock } from './clock.js?v=d3e5ddccb3';
 
 const app = initializeApp({
   apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0',
@@ -29,6 +29,7 @@ const newestOf = snap => snap.docs.map(x => ({ id: x.id, ...x.data() }))
   .sort((a, b) => (b.createdAt?.toMillis?.() ?? Infinity) - (a.createdAt?.toMillis?.() ?? Infinity))[0] || null;
 
 const $ = id => document.getElementById(id);
+$('boardLink').href = `./?t=${TRIP_ID}`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const AUTO_START_GRACE = 4000; // a phone that sees Go this late still starts by itself
 
@@ -414,7 +415,7 @@ function watch() {
           if (readPending()) savePending();
           render();
         }, fail);
-        $('boardLink').href = `./?draft=${d.id}`;
+        $('boardLink').href = `./?draft=${d.id}&t=${d.tournamentId}`;
       }
     }
     render();

@@ -16,13 +16,13 @@ import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem,
-} from './draftLogic.js?v=d4f512d8da';
+} from './draftLogic.js?v=d3e5ddccb3';
 import {
   COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
   officialShots, checking,
-} from './shootout.js?v=d4f512d8da';
-import { now, syncClock } from './clock.js?v=d4f512d8da';
-import { playReplay } from './replay.js?v=d4f512d8da';
+} from './shootout.js?v=d3e5ddccb3';
+import { now, syncClock } from './clock.js?v=d3e5ddccb3';
+import { playReplay } from './replay.js?v=d3e5ddccb3';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -287,7 +287,7 @@ function renderShootout(d) {
   const settled = isSettled(d, off);
   const ryder = d.teams.some(t => t.captainIds.length > 1);
 
-  const link = new URL(`gopher.html?draft=${d.id}`, location.href).href;
+  const link = new URL(`gopher.html?draft=${d.id}&t=${d.tournamentId}`, location.href).href;
   $('gopherLink').href = link;
   $('gopherLink').textContent = link.replace(/^https?:\/\//, '').replace(/\?.*$/, ''); // short to type; it opens the newest shootout
   $('shootoutHelp').textContent = r < 0

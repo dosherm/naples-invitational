@@ -1,6 +1,6 @@
 // Replays a captain's Whack-a-Gopher run on the draft board: the round's gophers
 // (rebuilt from its seed) and the captain's own taps as the server checked them.
-import { GAME_MS, makeSchedule, gopherAt, tapCounts, unpackTaps } from './shootout.js?v=d4f512d8da';
+import { GAME_MS, makeSchedule, gopherAt, tapCounts, unpackTaps } from './shootout.js?v=d3e5ddccb3';
 
 /** Every tap as { ms, hole, gopher (schedule index or -1), hit }, in time order. */
 export function replayEvents(sched, taps) {
