@@ -10,8 +10,8 @@ import {
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
   gopherAt, tapCounts, scoreTaps, packTaps, officialShots, checking,
-} from './shootout.js?v=e0c82a7d1f';
-import { now, syncClock } from './clock.js?v=e0c82a7d1f';
+} from './shootout.js?v=f3f28cef8f';
+import { now, syncClock } from './clock.js?v=f3f28cef8f';
 
 const app = initializeApp({
   apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0',
@@ -24,12 +24,14 @@ const db = getFirestore(app);
 // The trip this page is for (?t= for another trip, such as the test copy), so a
 // draft made for a different trip never shows up on the captains' phones
 const TRIP_ID = new URLSearchParams(location.search).get('t') || 'Qzidv9FRVnFu11y4jdhG';
+// The player the app or board says this is: their name goes first, marked as them (still a tap to confirm)
+const ME = new URLSearchParams(location.search).get('p');
 const tripDrafts = () => query(collection(db, 'drafts'), where('tournamentId', '==', TRIP_ID));
 const newestOf = snap => snap.docs.map(x => ({ id: x.id, ...x.data() }))
   .sort((a, b) => (b.createdAt?.toMillis?.() ?? Infinity) - (a.createdAt?.toMillis?.() ?? Infinity))[0] || null;
 
 const $ = id => document.getElementById(id);
-$('boardLink').href = `./?t=${TRIP_ID}`;
+$('boardLink').href = `./?t=${TRIP_ID}${ME ? `&p=${ME}` : ''}`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const AUTO_START_GRACE = 4000; // a phone that sees Go this late still starts by itself
 
@@ -337,10 +339,12 @@ function render() {
   const choosing = draft && !done && !captainId;
   $('who').hidden = !choosing;
   if (choosing) {
-    setHTML($('whoList'), captainIds().map(id => {
+    const ids = captainIds();
+    const ordered = ids.includes(ME) ? [ME, ...ids.filter(id => id !== ME)] : ids;
+    setHTML($('whoList'), ordered.map(id => {
       const taken = shots[id]?.uid && shots[id].uid !== uid;
       return `<button type="button" data-claim="${id}" ${taken ? 'disabled' : ''}>${esc(nameOf(id))}
-        <small>${taken ? 'Playing on another phone' : 'Tap if this is you'}</small></button>`;
+        <small>${taken ? 'Playing on another phone' : id === ME ? 'That\'s you: tap to play' : 'Tap if this is you'}</small></button>`;
     }).join(''));
   }
   $('me').hidden = !captainId;
@@ -415,7 +419,7 @@ function watch() {
           if (readPending()) savePending();
           render();
         }, fail);
-        $('boardLink').href = `./?draft=${d.id}&t=${d.tournamentId}`;
+        $('boardLink').href = `./?draft=${d.id}&t=${d.tournamentId}${ME ? `&p=${ME}` : ''}`;
       }
     }
     render();

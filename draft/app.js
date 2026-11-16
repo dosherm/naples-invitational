@@ -16,13 +16,13 @@ import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem,
-} from './draftLogic.js?v=e0c82a7d1f';
+} from './draftLogic.js?v=f3f28cef8f';
 import {
   COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
   officialShots, checking,
-} from './shootout.js?v=e0c82a7d1f';
-import { now, syncClock } from './clock.js?v=e0c82a7d1f';
-import { playReplay } from './replay.js?v=e0c82a7d1f';
+} from './shootout.js?v=f3f28cef8f';
+import { now, syncClock } from './clock.js?v=f3f28cef8f';
+import { playReplay } from './replay.js?v=f3f28cef8f';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -39,6 +39,8 @@ const saveDraftTeamsNow = httpsCallable(functions, 'saveDraftTeamsNow');
 // The trip this board is for (?t= for another trip, such as the test copy)
 const NAPLES_TOURNAMENT_ID = 'Qzidv9FRVnFu11y4jdhG';
 const TRIP_ID = new URLSearchParams(location.search).get('t') || NAPLES_TOURNAMENT_ID;
+// The player the app says this is (More › Team Draft passes it), so a captain goes straight to their game
+const ME = new URLSearchParams(location.search).get('p');
 
 // The organizer's account (as firestore.rules), or this trip's backup organizer
 // (tripSetup/{trip}.backupOrganizer, which only they and the organizer can read).
@@ -287,9 +289,12 @@ function renderShootout(d) {
   const settled = isSettled(d, off);
   const ryder = d.teams.some(t => t.captainIds.length > 1);
 
-  const link = new URL(`gopher.html?draft=${d.id}&t=${d.tournamentId}`, location.href).href;
+  // A captain who came from the app (?p=) gets a button with their name; it tells the game who they are
+  const me = ME && d.teams.some(t => t.captainIds.includes(ME)) ? ME : null;
+  const link = new URL(`gopher.html?draft=${d.id}&t=${d.tournamentId}${me ? `&p=${me}` : ''}`, location.href).href;
   $('gopherLink').href = link;
-  $('gopherLink').textContent = link.replace(/^https?:\/\//, '').replace(/\?.*$/, ''); // short to type; it opens the newest shootout
+  $('gopherLink').textContent = me ? `🐹 ${capName(me)}: play Whack-a-Gopher` : '🐹 Captains: play Whack-a-Gopher';
+  $('gopherAddress').textContent = `On another phone: ${link.replace(/^https?:\/\//, '').replace(/\?.*$/, '')}`; // short to type; it opens the newest shootout
   $('shootoutHelp').textContent = r < 0
     ? 'Each captain picks their name on their phone and gets one practice run. When everyone is ready, Go starts the real round on every phone at once.'
     : waiting.length ? `${r === 0 ? 'Real round' : `Sudden death ${r}`} is on. Waiting on ${names(waiting)}.`

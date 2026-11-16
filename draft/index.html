@@ -144,6 +144,8 @@
     .down { color: var(--danger); font-weight: 700; margin-left: 3px; }
     #endRound .pool table td, #endRound .pool table th { padding: 4px 3px; font-size: 14px; }
     .gopherLink { background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px; padding: 10px 12px; font-weight: 600; }
+    .playLink { display: block; text-align: center; background: var(--green); color: #fff; border-radius: 10px; padding: 14px 12px; font-size: 1.1rem; text-decoration: none; }
+    #gopherAddress { display: block; text-align: center; margin-top: 6px; font-size: .85rem; font-weight: 400; overflow-wrap: anywhere; }
     table.shootout td, table.shootout th { padding: 7px 5px; }
     table.shootout td.score { font-weight: 700; font-size: 18px; }
     table.shootout tr.tie td { background: #fff8e1; }
@@ -218,7 +220,7 @@
       <div id="shootoutCard" class="card hidden">
         <h2>Shootout for pick order</h2>
         <p class="muted" id="shootoutHelp"></p>
-        <p class="gopherLink">Captains, open <a id="gopherLink" href="gopher.html">naples.bourbonbogeys.com/draft/gopher.html</a> on your phone</p>
+        <p class="gopherLink"><a id="gopherLink" class="playLink" href="gopher.html">🐹 Captains: play Whack-a-Gopher</a><span id="gopherAddress" class="muted"></span></p>
         <table class="shootout">
           <thead><tr><th>Place</th><th>Team</th><th>Captain</th><th>Phone</th><th>Practice</th><th id="shootoutRoundHead">Score</th><th class="adminCol"></th></tr></thead>
           <tbody id="shootoutRows"></tbody>
@@ -298,6 +300,6 @@
   </dialog>
 
   <!-- ?v= is stamped by TournamentApp scripts/syncDraftSite.mjs: Hostinger caches .js files for a week -->
-  <script type="module" src="app.js?v=e0c82a7d1f"></script>
+  <script type="module" src="app.js?v=f3f28cef8f"></script>
 </body>
 </html>
