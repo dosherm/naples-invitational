@@ -181,7 +181,7 @@
     <section id="signIn" class="card hidden">
       <h2>Sign in to run the draft</h2>
       <form id="signInForm" class="row">
-        <input id="email" type="email" placeholder="Admin email" autocomplete="username" required>
+        <input id="email" type="email" placeholder="Organizer or backup email" autocomplete="username" required>
         <input id="password" type="password" placeholder="Password" autocomplete="current-password" required>
         <button type="submit">Sign in</button>
         <button type="button" class="secondary" id="cancelSignIn">Cancel</button>
@@ -288,7 +288,7 @@
     </div>
   </dialog>
 
-  <!-- Bump ?v= on every change: Hostinger's CDN caches .js files and keys on the full URL -->
-  <script type="module" src="app.js?v=20261116a"></script>
+  <!-- ?v= is stamped by TournamentApp scripts/syncDraftSite.mjs: Hostinger caches .js files for a week -->
+  <script type="module" src="app.js?v=d4f512d8da"></script>
 </body>
 </html>

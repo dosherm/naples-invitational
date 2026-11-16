@@ -9,20 +9,20 @@ import {
   getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, orderBy, limit, where,
+  getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, where,
   setDoc, updateDoc, deleteDoc, runTransaction, serverTimestamp, deleteField, writeBatch,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-functions.js';
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
-  pickProblem, groupsFromDraft,
-} from './draftLogic.js?v=20261116a';
+  pickProblem,
+} from './draftLogic.js?v=d4f512d8da';
 import {
   COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
   officialShots, checking,
-} from './shootout.js?v=20261116a';
-import { now, syncClock } from './clock.js?v=20261116a';
-import { playReplay } from './replay.js?v=20261116a';
+} from './shootout.js?v=d4f512d8da';
+import { now, syncClock } from './clock.js?v=d4f512d8da';
+import { playReplay } from './replay.js?v=d4f512d8da';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -32,19 +32,22 @@ const app = initializeApp({
 });
 const auth = getAuth(app);
 const db = getFirestore(app);
-const makeDraftPick = httpsCallable(getFunctions(app, 'us-central1'), 'makeDraftPick');
+const functions = getFunctions(app, 'us-central1');
+const makeDraftPick = httpsCallable(functions, 'makeDraftPick');
+const saveDraftTeamsNow = httpsCallable(functions, 'saveDraftTeamsNow');
 
 // The trip this board is for (?t= for another trip, such as the test copy)
 const NAPLES_TOURNAMENT_ID = 'Qzidv9FRVnFu11y4jdhG';
 const TRIP_ID = new URLSearchParams(location.search).get('t') || NAPLES_TOURNAMENT_ID;
 
-// Same account firestore.rules treats as admin; used here only to show the controls.
+// The organizer's account (as firestore.rules), or this trip's backup organizer
+// (tripSetup/{trip}.backupOrganizer, which only they and the organizer can read).
+// Used here only to show the controls; the rules and the server do the checking.
 const ADMIN_UID = 'GknZy04hB2V8xQdnMmKqy2x24Qu2';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const show = (el, on) => el.classList.toggle('hidden', !on);
-const newId = () => doc(collection(db, 'drafts')).id;
 
 let isAdmin = false;
 let uid = null;             // this phone's sign-in, which a captain's name is linked to
@@ -67,12 +70,21 @@ function fail(error) {
 
 // ---------- Auth ----------
 
+async function isBackupOrganizer(user) {
+  try {
+    const setup = (await getDoc(doc(db, 'tripSetup', TRIP_ID))).data();
+    return setup?.backupOrganizer?.uid === user.uid;
+  } catch {
+    return false; // anyone else can't read the trip's setup
+  }
+}
+
 onAuthStateChanged(auth, async user => {
   if (!user) {
     signInAnonymously(auth).catch(fail);
     return;
   }
-  isAdmin = !user.isAnonymous && user.uid === ADMIN_UID;
+  isAdmin = !user.isAnonymous && (user.uid === ADMIN_UID || await isBackupOrganizer(user));
   uid = user.uid;
   $('adminButton').textContent = isAdmin ? 'Sign out' : 'Run draft';
   $('adminWho').textContent = isAdmin ? `Signed in as ${user.email}` : '';
@@ -128,8 +140,10 @@ function watchDraft(draftId) {
 }
 
 async function loadDraftPicker(selectedId) {
-  const snap = await getDocs(query(collection(db, 'drafts'), orderBy('createdAt', 'desc'), limit(20)));
-  const options = snap.docs.map(d => {
+  // This trip's drafts, newest first
+  const snap = await getDocs(query(collection(db, 'drafts'), where('tournamentId', '==', TRIP_ID)));
+  const newestFirst = [...snap.docs].sort((a, b) => (b.data().createdAt?.toMillis?.() ?? Infinity) - (a.data().createdAt?.toMillis?.() ?? Infinity));
+  const options = newestFirst.map(d => {
     const x = d.data();
     return `<option value="${d.id}">${esc(x.tournamentName)} · ${esc(x.roundName)} · ${esc(statusLabel(x))}</option>`;
   });
@@ -577,42 +591,21 @@ $('recordsClear').addEventListener('click', () => {
 
 // ---------- Admin: saving to the round ----------
 
+// Backup to the server saving the teams by itself once the last pick is in
 $('saveButton').addEventListener('click', () => withBusy(async () => {
-  const roundRef = doc(db, 'tournaments', draft.tournamentId, 'rounds', draft.roundId);
-  const round = (await getDoc(roundRef)).data();
-  // Always ask: this changes the round the app plays from
-  const question = round?.groups?.length
-    ? `${draft.roundName} already has ${round.groups.length} groups. Replace them with these ${draft.teams.length} teams?`
-    : `Save these ${draft.teams.length} teams as ${draft.roundName}'s groups?`;
+  const question = draft.status === 'saved'
+    ? `Save these ${draft.teams.length} teams to ${draft.roundName} again?`
+    : `Save these ${draft.teams.length} teams as ${draft.roundName}'s playing groups (and its team games' teams)?`;
   if (!confirm(question)) return;
-  const groups = groupsFromDraft(draft, newId);
-  const savedBy = auth.currentUser?.email || auth.currentUser?.uid || 'unknown';
-  const savedAt = new Date().toISOString();
-  await updateDoc(roundRef, {
-    groups,
-    // Ryder Cup: the two sides' names, for the app's Ryder Cup scoreboard
-    ...(draft.format === 'ryder' ? { ryderTeams: draft.teams.map(t => ({ teamId: t.teamId, name: t.name })) } : {}),
-    draftId: draft.id,
-    draftSavedBy: savedBy,
-    draftSavedAt: savedAt,
-    updatedAt: savedAt,
-  });
-
-  // Team games on this round (30/40 Ball) play the drafted teams
-  let teamGames = 0;
-  if (draft.format === 'teams') {
-    const games = await getDocs(query(collection(db, 'games'), where('roundIds', 'array-contains', draft.roundId)));
-    for (const g of games.docs.filter(g => g.data().gameType === 'thirtyfourty')) {
-      const teams = draft.teams.map(t => {
-        const players = groups.find(gr => gr.name === t.name)?.players || teamMembers(draft, t.teamId);
-        return { teamId: t.teamId, teamName: t.name, players, teamSize: players.length };
-      });
-      await updateDoc(g.ref, { teams, playerIds: teams.flatMap(t => t.players) });
-      teamGames++;
-    }
+  try {
+    await saveDraftTeamsNow({ draftId: draft.id });
+  } catch (error) {
+    // The day already has scores or locked groups: only on purpose
+    if (!/Scores|locked/.test(error?.message || '')) throw error;
+    if (!confirm(`${error.message}. Save the teams over it anyway?`)) return;
+    await saveDraftTeamsNow({ draftId: draft.id, force: true });
   }
-  await updateDoc(doc(db, 'drafts', draft.id), { status: 'saved', savedBy, savedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  alert(`Saved ${groups.length} groups to ${draft.roundName}${teamGames ? ` and the teams for its 30/40 game` : ''}. Set tee times and tees in the app.`);
+  alert(`Saved to ${draft.roundName}. Set tee times and tees in the app.`);
 }));
 
 $('deleteButton').addEventListener('click', () => {

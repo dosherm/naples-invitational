@@ -10,8 +10,8 @@ import {
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
   gopherAt, tapCounts, scoreTaps, packTaps, officialShots, checking,
-} from './shootout.js?v=20261116a';
-import { now, syncClock } from './clock.js?v=20261116a';
+} from './shootout.js?v=d4f512d8da';
+import { now, syncClock } from './clock.js?v=d4f512d8da';
 
 const app = initializeApp({
   apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0',
