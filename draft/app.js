@@ -16,13 +16,13 @@ import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem,
-} from './draftLogic.js?v=d3e5ddccb3';
+} from './draftLogic.js?v=e0c82a7d1f';
 import {
   COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
   officialShots, checking,
-} from './shootout.js?v=d3e5ddccb3';
-import { now, syncClock } from './clock.js?v=d3e5ddccb3';
-import { playReplay } from './replay.js?v=d3e5ddccb3';
+} from './shootout.js?v=e0c82a7d1f';
+import { now, syncClock } from './clock.js?v=e0c82a7d1f';
+import { playReplay } from './replay.js?v=e0c82a7d1f';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({

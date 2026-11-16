@@ -165,6 +165,14 @@
       .tag { font-size: 9px; }
       .status { font-size: 15px; padding: 10px 12px; }
     }
+    /* The paper backup if the signal fails at the venue: flights, captains, teams,
+       picks so far, on white, without the buttons */
+    @media print {
+      header button, #adminBar, #adminActions, #signIn, #saveBar, #recapCard, #recordsCard,
+      #captainLink, #shootoutAdmin, .adminCol, .gopherLink, dialog { display: none !important; }
+      body, .card, .team { background: #fff !important; color: #000 !important; box-shadow: none !important; }
+      .card, .team { break-inside: avoid; border: 1px solid #999; }
+    }
   </style>
 </head>
 <body>
@@ -194,6 +202,7 @@
       <div class="row">
         <strong>Draft:</strong>
         <select id="draftPicker"></select>
+        <button type="button" class="secondary" onclick="window.print()">Print (paper backup)</button>
         <span class="muted" id="adminWho"></span>
       </div>
     </section>
@@ -289,6 +298,6 @@
   </dialog>
 
   <!-- ?v= is stamped by TournamentApp scripts/syncDraftSite.mjs: Hostinger caches .js files for a week -->
-  <script type="module" src="app.js?v=d3e5ddccb3"></script>
+  <script type="module" src="app.js?v=e0c82a7d1f"></script>
 </body>
 </html>
