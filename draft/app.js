@@ -16,13 +16,13 @@ import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/
 import {
   FLIGHTS, FORMATS, teamMembers, perFlight, totalPicks, isComplete, teamOnClock, takenIds,
   pickProblem,
-} from './draftLogic.js?v=f3f28cef8f';
+} from './draftLogic.js?v=1564c96bae';
 import {
   COUNTDOWN_MS, newSeed, rounds, currentRound, runScore, teamScore, waitingOn, standings, nextTie, isSettled, boardRows,
   officialShots, checking,
-} from './shootout.js?v=f3f28cef8f';
-import { now, syncClock } from './clock.js?v=f3f28cef8f';
-import { playReplay } from './replay.js?v=f3f28cef8f';
+} from './shootout.js?v=1564c96bae';
+import { now, syncClock } from './clock.js?v=1564c96bae';
+import { playReplay } from './replay.js?v=1564c96bae';
 
 // The Firebase web key is public by design; access is controlled by firestore.rules.
 const app = initializeApp({
@@ -58,6 +58,8 @@ let unsubscribe = null;     // its listener
 let shots = {};             // its shootout docs, captainId -> { uid, practice, runs } (what phones saved)
 let verified = {};          // server-checked runs, captainId -> { runs } (what counts)
 let unsubVerified = null;
+let shotsLoaded = false;    // the phone links have been read at least once
+let autoLinked = false;     // the app's captain (?p=) is linked once, by itself
 let unsubShots = null;
 let shotsFor = null;        // the draft id shots belong to
 let lastPickCount = 0;      // to highlight the newest pick
@@ -65,10 +67,19 @@ let busy = false;
 let records = null;         // Gopher Hall of Fame (stats/gopher, kept by the server)
 const ACCEPT_AFTER_MS = 20000; // offer to accept a phone's score if the server hasn't checked it by then
 
+let toastTimer = null;
 function fail(error) {
   console.error(error);
-  $('pageError').textContent = error?.message || String(error);
+  const text = error?.message || String(error);
+  $('pageError').textContent = text;
+  // Also on top of the page: the bottom line is off screen on a phone, and the
+  // board redraws (and clears it) right after a failed tap
+  $('toastText').textContent = text;
+  show($('toast'), true);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => show($('toast'), false), 10000);
 }
+$('toastClose').addEventListener('click', () => show($('toast'), false));
 
 // ---------- Auth ----------
 
@@ -172,6 +183,7 @@ function watchShots(d) {
   unsubShots = null;
   unsubVerified = null;
   shots = {};
+  shotsLoaded = false;
   verified = {};
   shotsFor = id;
   if (id) {
@@ -181,6 +193,7 @@ function watchShots(d) {
     }, fail);
     unsubShots = onSnapshot(collection(db, 'drafts', id, 'shootout'), snap => {
       shots = Object.fromEntries(snap.docs.map(x => [x.id, x.data()]));
+      shotsLoaded = true;
       render(draft);
     }, fail);
   }
@@ -214,6 +227,17 @@ function render(d) {
   else if (d.status === 'saved') status.textContent = 'Draft complete · teams saved to the round';
   else if (done) status.textContent = 'Draft complete';
   else status.textContent = `${myTurn ? 'Your pick' : 'On the clock'}: ${onClock.name} · pick ${pickNo} of ${totalPicks(d)}`;
+  // Opened from the app as a captain (?p=): during the shootout go straight to the
+  // game (it links this phone to them); during the picks link this phone to them here
+  const meCaptain = ME && d.teams.some(t => t.captainIds.includes(ME)) ? ME : null;
+  if (meCaptain && !isAdmin && uid) {
+    if (inShootout && d.shootout?.stage !== 'done') {
+      return location.replace(`gopher.html?draft=${d.id}&t=${d.tournamentId}&p=${meCaptain}`);
+    }
+    if (!done && !mine.length && !autoLinked && shotsLoaded && !shots[meCaptain]?.uid) { autoLinked = true; linkCaptain(meCaptain); }
+  }
+  // Players see the draft itself; the organizer also gets the flights by day and the Hall of Fame
+  document.body.classList.toggle('playerView', !isAdmin && !done);
   if (inShootout) renderShootout(d);
   renderCaptainLink(d, inShootout, done, mine);
 
@@ -462,7 +486,10 @@ function renderCaptainLink(d, inShootout, done, mine) {
 $('captainLink').addEventListener('click', e => {
   const b = e.target.closest('[data-link]');
   if (!b || !draft || !confirm(`Are you ${capName(b.dataset.link)}? This phone will make their team's picks.`)) return;
-  const captainId = b.dataset.link;
+  linkCaptain(b.dataset.link);
+});
+
+function linkCaptain(captainId) {
   withBusy(() => runTransaction(db, async tx => {
     const ref = doc(db, 'drafts', draft.id, 'shootout', captainId);
     const snap = await tx.get(ref);
@@ -470,7 +497,7 @@ $('captainLink').addEventListener('click', e => {
     if (snap.exists()) tx.update(ref, { uid, name: capName(captainId) });
     else tx.set(ref, { uid, name: capName(captainId), practice: null, runs: {} });
   }));
-});
+}
 
 $('pool').addEventListener('click', e => {
   const button = e.target.closest('[data-pick]');

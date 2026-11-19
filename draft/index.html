@@ -145,6 +145,7 @@
     #endRound .pool table td, #endRound .pool table th { padding: 4px 3px; font-size: 14px; }
     .gopherLink { background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px; padding: 10px 12px; font-weight: 600; }
     .playLink { display: block; text-align: center; background: var(--green); color: #fff; border-radius: 10px; padding: 14px 12px; font-size: 1.1rem; text-decoration: none; }
+    .playerView #flightsCard, .playerView #recordsCard { display: none !important; }
     #gopherAddress { display: block; text-align: center; margin-top: 6px; font-size: .85rem; font-weight: 400; overflow-wrap: anywhere; }
     table.shootout td, table.shootout th { padding: 7px 5px; }
     table.shootout td.score { font-weight: 700; font-size: 18px; }
@@ -153,6 +154,12 @@
     .place { font-weight: 700; color: var(--green); white-space: nowrap; }
     .hidden { display: none !important; }
     .error { color: var(--danger); }
+    /* A problem with what you just tapped, on top of the page where you'll see it */
+    #toast { position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 12px); z-index: 50;
+      background: var(--danger); color: #fff; border-radius: 12px; padding: 14px 44px 14px 16px; font-weight: 600;
+      box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+    #toast button { position: absolute; right: 8px; top: 8px; background: none; border: 0; color: #fff; font-size: 22px; line-height: 1; padding: 4px 8px; }
+    @media print { #toast { display: none !important; } }
     @media (max-width: 700px) {
       main { padding: 12px; }
       .pool { grid-template-columns: repeat(2, 1fr); }
@@ -287,6 +294,7 @@
 
     <p class="error" id="pageError"></p>
   </main>
+  <div id="toast" class="hidden" role="alert"><span id="toastText"></span><button type="button" id="toastClose" aria-label="Close">×</button></div>
 
   <!-- Watch a captain's shootout run back -->
   <dialog id="replayDialog" aria-labelledby="replayTitle">
@@ -300,6 +308,6 @@
   </dialog>
 
   <!-- ?v= is stamped by TournamentApp scripts/syncDraftSite.mjs: Hostinger caches .js files for a week -->
-  <script type="module" src="app.js?v=f3f28cef8f"></script>
+  <script type="module" src="app.js?v=1564c96bae"></script>
 </body>
 </html>

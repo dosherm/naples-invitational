@@ -10,8 +10,8 @@ import {
 import {
   GAME_MS, PRACTICE_SEED, makeSchedule, rounds, currentRound, runScore, teamScore, inRound, waitingOn, boardRows,
   gopherAt, tapCounts, scoreTaps, packTaps, officialShots, checking,
-} from './shootout.js?v=f3f28cef8f';
-import { now, syncClock } from './clock.js?v=f3f28cef8f';
+} from './shootout.js?v=1564c96bae';
+import { now, syncClock } from './clock.js?v=1564c96bae';
 
 const app = initializeApp({
   apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0',
@@ -31,13 +31,15 @@ const newestOf = snap => snap.docs.map(x => ({ id: x.id, ...x.data() }))
   .sort((a, b) => (b.createdAt?.toMillis?.() ?? Infinity) - (a.createdAt?.toMillis?.() ?? Infinity))[0] || null;
 
 const $ = id => document.getElementById(id);
-$('boardLink').href = `./?t=${TRIP_ID}${ME ? `&p=${ME}` : ''}`;
+$('boardLink').href = `./?t=${TRIP_ID}`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const AUTO_START_GRACE = 4000; // a phone that sees Go this late still starts by itself
 
 let uid = null;
 let draft = null;   // the draft doc
 let shots = {};     // captainId -> shootout doc (what each phone saved)
+let shotsLoaded = false; // the captains' phone links have been read at least once
+let autoClaimed = false; // the app's player (?p=) is linked once, by itself
 let verified = {};  // captainId -> server-checked runs (what counts)
 let unsubVerified = null;
 let game = null;    // the run in progress
@@ -337,6 +339,12 @@ function render() {
   // Pick a captain
   const captainId = myCaptain();
   const choosing = draft && !done && !captainId;
+  // Opened from the app as a captain: this phone plays for them without asking
+  // (unless another phone already does; then the list below says so)
+  if (choosing && ME && uid && shotsLoaded && !autoClaimed && captainIds().includes(ME) && !(shots[ME]?.uid && shots[ME].uid !== uid)) {
+    autoClaimed = true;
+    claim(ME);
+  }
   $('who').hidden = !choosing;
   if (choosing) {
     const ids = captainIds();
@@ -408,6 +416,7 @@ function watch() {
       if (unsubShots) unsubShots();
       if (unsubVerified) unsubVerified();
       shots = {};
+      shotsLoaded = false;
       verified = {};
       if (d) {
         unsubVerified = onSnapshot(collection(db, 'drafts', d.id, 'verified'), snap => {
@@ -416,10 +425,11 @@ function watch() {
         }, fail);
         unsubShots = onSnapshot(collection(db, 'drafts', d.id, 'shootout'), snap => {
           shots = Object.fromEntries(snap.docs.map(s => [s.id, s.data()]));
+          shotsLoaded = true;
           if (readPending()) savePending();
           render();
         }, fail);
-        $('boardLink').href = `./?draft=${d.id}&t=${d.tournamentId}${ME ? `&p=${ME}` : ''}`;
+        $('boardLink').href = `./?draft=${d.id}&t=${d.tournamentId}`;
       }
     }
     render();
