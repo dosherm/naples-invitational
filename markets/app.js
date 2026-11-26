@@ -1,8 +1,8 @@
 // The Prop Board: play-money prediction markets for the trip. Anyone links their
 // phone to their name, makes markets, and buys answers; prices and balances come
 // from replaying every trade (engine.js), so they're the same on every phone.
-import { replay, quote, START, MAX_TRADE } from './engine.js?v=20261125c';
-import { openStore } from './store.js?v=20261125c';
+import { replay, quote, START, MAX_TRADE, MAX_ANSWERS } from './engine.js?v=20261125d';
+import { openStore } from './store.js?v=20261125d';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -312,16 +312,24 @@ function openMarket(id, outcome) {
   renderMarketLive();
 }
 
+// The answers drawn on the chart: all of them, or the six favourites in a big market
+function chartAnswers(m, st) {
+  if (isBinary(m)) return [0];
+  const all = m.outcomes.map((_, i) => i);
+  return all.length <= COLORS.length ? all : all.sort((a, b) => st.p[b] - st.p[a]).slice(0, COLORS.length);
+}
+
 function chartSVG(m, st) {
   const W = 320, H = 150, L = 4, Rr = 34, T = 8, B = 18;
   const hist = st.history.length > 1 ? st.history : [...st.history, { ...st.history[0], t: Date.now() }];
   const t0 = hist[0].t, t1 = Math.max(closed(m) ? hist[hist.length - 1].t : Date.now(), t0 + 1);
   const x = t => L + ((t - t0) / (t1 - t0)) * (W - L - Rr), y = p => T + (1 - p) * (H - T - B);
-  const lines = (isBinary(m) ? [0] : m.outcomes.map((_, i) => i)).map(i => {
+  const shown = chartAnswers(m, st);
+  const lines = shown.map((i, k) => {
     let d = `M${x(hist[0].t).toFixed(1)},${y(hist[0].p[i]).toFixed(1)}`;
     for (const h of hist.slice(1)) d += `H${x(h.t).toFixed(1)}V${y(h.p[i]).toFixed(1)}`;
     d += `H${x(t1).toFixed(1)}`;
-    const c = isBinary(m) ? 'var(--yes)' : COLORS[i % COLORS.length];
+    const c = isBinary(m) ? 'var(--yes)' : COLORS[k];
     return `<path d="${d}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       <circle cx="${x(t1).toFixed(1)}" cy="${y(st.p[i]).toFixed(1)}" r="3.5" fill="${c}"/>`;
   }).join('');
@@ -340,7 +348,8 @@ function renderMarketLive() {
   const bin = isBinary(m);
   $('mLive').innerHTML = `<div class="sec">
     ${bin ? `<div class="odds" style="margin-bottom:6px"><div class="big num">${pct(st.p[0])}<small>chance of Yes</small></div></div>`
-      : `<div class="legend">${m.outcomes.map((o, i) => `<span style="--c:${COLORS[i % COLORS.length]}">${esc(o)} <b class="num">${pct(st.p[i])}</b></span>`).join('')}</div>`}
+      : `<div class="legend">${chartAnswers(m, st).map((i, k) => `<span style="--c:${COLORS[k]}">${esc(m.outcomes[i])} <b class="num">${pct(st.p[i])}</b></span>`).join('')}
+        ${m.outcomes.length > COLORS.length ? `<span class="more" style="--c:transparent">+${m.outcomes.length - COLORS.length} more below</span>` : ''}</div>`}
     ${chartSVG(m, st)}
     <div class="meta num"><span>${bucks(st.volume)} traded</span><span>${st.traders} ${st.traders === 1 ? 'player' : 'players'}</span><span>${esc(closesText(m))}</span><span>Made by ${esc(m.createdByName || nameOf(m.createdBy))}</span></div></div>`;
 
@@ -494,6 +503,12 @@ function openCreate() {
   setTimeout(() => $('cQ').focus(), 300);
 }
 
+// Players as answers: first names, or full names where two share a first name
+function playerLabels() {
+  const first = p => p.name.split(' ')[0];
+  return S.roster.map(p => S.roster.filter(q => first(q) === first(p)).length > 1 ? p.name : first(p));
+}
+
 function drawAnswers() {
   $('cType').querySelectorAll('[data-t]').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === sheet.type));
   if (sheet.type === 'binary') {
@@ -501,14 +516,22 @@ function drawAnswers() {
   } else {
     $('cAnswers').innerHTML = `${sheet.answers.map((a, i) => `<div class="ans"><input class="in" data-i="${i}" maxlength="40" placeholder="Answer ${i + 1}" value="${esc(a)}">
       ${sheet.answers.length > 2 ? `<button type="button" data-del="${i}" aria-label="Remove">−</button>` : ''}</div>`).join('')}
-      ${sheet.answers.length < 6 ? `<button class="ghost" type="button" id="cAdd" style="margin-top:2px">+ Add an answer</button>` : ''}
-      <div class="names" id="cNames">${S.roster.filter(p => !sheet.answers.includes(p.name.split(' ')[0])).slice(0, 24).map(p => `<button class="chip" type="button" data-n="${esc(p.name.split(' ')[0])}">+ ${esc(p.name.split(' ')[0])}</button>`).join('')}</div>`;
+      ${sheet.answers.length < MAX_ANSWERS ? `<button class="ghost" type="button" id="cAdd" style="margin-top:2px">+ Add an answer</button>` : ''}
+      <div class="names" id="cNames">${playerLabels().length > 2 && playerLabels().some(n => !sheet.answers.includes(n)) ? `<button class="chip" type="button" id="cAll">+ Everyone on the trip</button>` : ''}
+        ${playerLabels().filter(n => !sheet.answers.includes(n)).map(n => `<button class="chip" type="button" data-n="${esc(n)}">+ ${esc(n)}</button>`).join('')}</div>`;
+    $('cAll')?.addEventListener('click', () => {
+      const have = sheet.answers.map(a => a.trim()).filter(Boolean);
+      const next = [...have, ...playerLabels().filter(n => !have.includes(n))];
+      if (next.length > MAX_ANSWERS) toast(`Up to ${MAX_ANSWERS} answers`);
+      sheet.answers = next.slice(0, MAX_ANSWERS);
+      drawAnswers();
+    });
     $('cAnswers').querySelectorAll('input[data-i]').forEach(inp => inp.oninput = () => { sheet.answers[+inp.dataset.i] = inp.value; createPreview(); });
     $('cAnswers').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { sheet.answers.splice(+b.dataset.del, 1); drawAnswers(); });
     $('cAdd')?.addEventListener('click', () => { sheet.answers.push(''); drawAnswers(); $('cAnswers').querySelector(`input[data-i="${sheet.answers.length - 1}"]`)?.focus(); });
     $('cNames').querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
       const empty = sheet.answers.findIndex(a => !a.trim());
-      if (empty >= 0) sheet.answers[empty] = b.dataset.n; else if (sheet.answers.length < 6) sheet.answers.push(b.dataset.n); else return toast('Up to 6 answers');
+      if (empty >= 0) sheet.answers[empty] = b.dataset.n; else if (sheet.answers.length < MAX_ANSWERS) sheet.answers.push(b.dataset.n); else return toast(`Up to ${MAX_ANSWERS} answers`);
       drawAnswers();
     });
   }
