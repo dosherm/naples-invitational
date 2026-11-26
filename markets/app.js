@@ -1,8 +1,8 @@
 // The Prop Board: play-money prediction markets for the trip. Anyone links their
 // phone to their name, makes markets, and buys answers; prices and balances come
 // from replaying every trade (engine.js), so they're the same on every phone.
-import { replay, quote, START, MAX_TRADE } from './engine.js?v=20261125a';
-import { openStore } from './store.js?v=20261125a';
+import { replay, quote, START, MAX_TRADE } from './engine.js?v=20261125b';
+import { openStore } from './store.js?v=20261125b';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -15,6 +15,7 @@ const bucks = (n, sign) => `${sign && n > 0.5 ? '+' : sign && n < -0.5 ? '−' :
 const cents = p => `${Math.max(1, Math.min(99, Math.round(p * 100)))}¢`;
 const pct = p => `${Math.max(p > 0 ? 1 : 0, Math.min(p < 1 ? 99 : 100, Math.round(p * 100)))}%`;
 const isBinary = m => m.outcomes.length === 2 && m.outcomes[0] === 'Yes' && m.outcomes[1] === 'No';
+const shortCourse = c => { const s = c.replace(/\s+(Golf\s*(&|and)\s*)?(Country|Golf|Yacht)?\s*Club.*$/i, '').trim(); return s.length > 3 ? s : c; };
 const initials = n => n.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
 let S = null;        // store state
@@ -83,7 +84,7 @@ function renderFilters() {
   const list = [
     ['all', 'All', open.length],
     ['trip', 'Whole trip', count(m => !m.roundId)],
-    ...S.days.map(d => [d.id, `${d.label.split(',')[0]} · ${d.course.replace(/ (Country|Golf|Club|Golf Club|Country Club)+$/i, '')}`, count(m => m.roundId === d.id)]),
+    ...S.days.map(d => [d.id, `${d.label.split(',')[0]} · ${shortCourse(d.course)}`, count(m => m.roundId === d.id)]),
     ['settled', 'Settled', S.markets.length - open.length],
   ];
   $('filters').innerHTML = list.map(([k, l, n]) => `<button class="chip" data-f="${k}" aria-pressed="${filter === k}">${esc(l)}<small>${n}</small></button>`).join('');
@@ -125,7 +126,7 @@ function closesText(m) {
 const soon = m => m.status === 'open' && m.closeAt - Date.now() > 0 && m.closeAt - Date.now() < 3 * 36e5;
 function tagText(m) {
   const d = dayOf(m);
-  return d ? `Day ${d.n} · ${d.course.replace(/ (Country Club|Golf Club|Golf & Country Club|Club)$/i, '')}` : 'Whole trip';
+  return d ? `Day ${d.n} · ${shortCourse(d.course)}` : 'Whole trip';
 }
 
 function sparkSVG(hist, i, w = 170, h = 40, color = 'var(--yes)') {

@@ -16,7 +16,8 @@ import {
   serverTimestamp, Timestamp,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 
-export const TRIP_ID = 'Qzidv9FRVnFu11y4jdhG';   // Naples Invitational 2027
+// Naples Invitational 2027; ?trip=<id> opens another trip's board (e.g. Naples TEST for trying things out)
+export const TRIP_ID = new URLSearchParams(location.search).get('trip') || 'Qzidv9FRVnFu11y4jdhG';
 const ADMIN_UID = 'GknZy04hB2V8xQdnMmKqy2x24Qu2';
 
 const ms = x => (x?.toMillis ? x.toMillis() : typeof x === 'number' ? x : null);
