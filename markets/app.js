@@ -1,8 +1,8 @@
 // The Prop Board: play-money prediction markets for the trip. Anyone links their
 // phone to their name, makes markets, and buys answers; prices and balances come
 // from replaying every trade (engine.js), so they're the same on every phone.
-import { replay, quote, START, MAX_TRADE, MAX_ANSWERS } from './engine.js?v=20261125d';
-import { openStore } from './store.js?v=20261125d';
+import { replay, quote, START, MAX_TRADE, MAX_ANSWERS } from './engine.js?v=20261125e';
+import { openStore } from './store.js?v=20261125e';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -273,7 +273,7 @@ function renderWho() {
       const c = S.claims[p.id];
       const taken = c?.uid && c.uid !== S.uid;
       return `<button class="person ${p.id === mine ? 'mine' : ''}" data-pid="${esc(p.id)}" ${taken && !S.isOrganizer ? 'disabled' : ''}>
-        <span>${esc(p.name)}</span><small>${p.id === mine ? 'You ✓' : taken ? (S.isOrganizer ? 'Unlink' : 'On a phone') : ''}</small></button>`;
+        <span>${esc(p.name)}</span><small>${p.id === mine ? 'You ✓' : taken ? (S.isOrganizer ? 'Unlink' : c.uid === S.organizerUid ? 'Organizer sign-in' : 'On a phone') : ''}</small></button>`;
     }).join('')}</div>
     ${mine ? `<button class="ghost" id="unlinkMe">I'm not ${esc(nameOf(mine))} — unlink this phone</button>` : ''}
     <p class="err" id="whoErr"></p>`;
