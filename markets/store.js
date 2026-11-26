@@ -34,9 +34,10 @@ function firebaseStore(onChange, onError) {
   const app = initializeApp({ apiKey: 'AIzaSyCkj6gYcGJmZrDELoFV8o7OW3_5YSmY2z0', authDomain: 'golf-tournament-app-e2390.firebaseapp.com', projectId: 'golf-tournament-app-e2390' }, 'prop-board');
   const auth = getAuth(app);
   const db = getFirestore(app);
-  const state = { ready: false, uid: null, email: null, isOrganizer: false, roster: [], days: [], markets: [], trades: [], claims: {} };
+  const state = { ready: false, uid: null, email: null, isOrganizer: false, organizerUid: ADMIN_UID, roster: [], days: [], markets: [], trades: [], claims: {} };
   const emit = () => onChange(state);
   const unsubs = [];
+  let relink = null;   // the name to give back after the organizer signs out
 
   async function loadTrip() {
     const ids = (await getDoc(doc(db, 'tournaments', TRIP_ID))).data()?.players || [];
@@ -74,6 +75,8 @@ function firebaseStore(onChange, onError) {
     if (!user) { signInAnonymously(auth).catch(onError); return; }
     state.uid = user.uid;
     state.email = user.email || null;
+    // After the organizer signs out, this phone gets a new sign-in: give it back the name it had
+    if (relink && user.isAnonymous) { const pid = relink; relink = null; claimAs(pid).catch(onError); }
     state.isOrganizer = await organizerCheck(user);
     try {
       if (!state.roster.length) await loadTrip();
@@ -84,6 +87,9 @@ function firebaseStore(onChange, onError) {
   });
 
   const claimRef = pid => doc(db, 'marketPlayers', `${TRIP_ID}_${pid}`);
+  const linkedPid = () => Object.values(state.claims).find(c => c.uid && c.uid === state.uid)?.playerId;
+  const nameFor = pid => state.roster.find(p => p.id === pid)?.name || '';
+  const claimAs = pid => updateDoc(claimRef(pid), { uid: state.uid, name: nameFor(pid), linkedAt: serverTimestamp() });
   return {
     get state() { return state; },
     async claim(pid) {
@@ -110,8 +116,19 @@ function firebaseStore(onChange, onError) {
       await batch.commit();
     },
     settle: (m, status, winner, by) => updateDoc(doc(db, 'markets', m), { status, winner, resolvedBy: by, resolvedAt: status === 'open' ? null : serverTimestamp() }),
-    signIn: (email, pw) => signInWithEmailAndPassword(auth, email, pw),
-    signOut: () => signOut(auth),
+    // Signing in or out as organizer changes this phone's sign-in, so the player's
+    // name moves with it (otherwise it stays stuck on the old sign-in)
+    async signIn(email, pw) {
+      const pid = linkedPid();
+      await signInWithEmailAndPassword(auth, email, pw);
+      if (pid) { state.uid = auth.currentUser.uid; await claimAs(pid); }
+    },
+    async signOut() {
+      const pid = linkedPid();
+      if (pid) await updateDoc(claimRef(pid), { uid: null, linkedAt: serverTimestamp() });
+      relink = pid || null;
+      await signOut(auth);
+    },
   };
 }
 
