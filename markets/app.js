@@ -1,8 +1,8 @@
 // The Prop Board: play-money prediction markets for the trip. Anyone links their
 // phone to their name, makes markets, and buys answers; prices and balances come
 // from replaying every trade (engine.js), so they're the same on every phone.
-import { replay, quote, START, MAX_TRADE } from './engine.js?v=20261125b';
-import { openStore } from './store.js?v=20261125b';
+import { replay, quote, START, MAX_TRADE } from './engine.js?v=20261125c';
+import { openStore } from './store.js?v=20261125c';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -368,6 +368,8 @@ function renderMarketLive() {
   } else if (S.isOrganizer && m.status !== 'open') {
     sEl.innerHTML = `<div class="sec"><h3>Organizer</h3><button class="ghost" style="margin:0" data-win="reopen">Undo the result and reopen</button></div>`;
   } else sEl.innerHTML = '';
+  // The organizer can take a market off the board altogether (its bets go with it, so nobody wins or loses on it)
+  if (S.isOrganizer) sEl.insertAdjacentHTML('beforeend', `<button class="ghost danger" data-win="delete">Delete this market</button>`);
   sEl.querySelectorAll('[data-win]').forEach(b => b.onclick = () => settleClick(m, b.dataset.win));
 
   // Activity, newest first
@@ -431,6 +433,12 @@ async function doTrade(m) {
 async function settleClick(m, v) {
   if (v === 'start' || v === 'cancel') { sheet.settling = v === 'start'; return renderMarketLive(); }
   const by = S.isOrganizer ? 'organizer' : nameOf(myId());
+  if (v === 'delete') {
+    const n = R.markets[m.id].trades.length;
+    if (!confirm(`Delete "${m.question}"? It comes off the board for everyone${n ? ` and its ${n} bet${n === 1 ? '' : 's'} are cancelled (everyone gets their Bogey Bucks back)` : ''}. This can't be undone.`)) return;
+    try { await store.deleteMarket(m.id); closeSheet(); toast('Market deleted'); } catch (e) { toast(friendly(e), true); }
+    return;
+  }
   if (v === 'reopen') {
     if (confirm('Undo the result? Payouts are taken back and trading reopens until the close time.')) busy(store.settle(m.id, 'open', null, null), 'Reopened');
     return;

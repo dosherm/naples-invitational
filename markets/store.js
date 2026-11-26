@@ -6,14 +6,15 @@
 // Trades are never changed or deleted by players; prices and balances are worked
 // out from them (engine.js). The rules are in the TournamentApp repo's firestore.rules.
 //
-// ?demo opens a practice board kept on this phone only (nothing is shared).
+// ?demo opens a practice board kept on this phone only (nothing is shared);
+// ?demo&organizer shows it with the organizer's buttons.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
 import {
   getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, where, setDoc, addDoc, updateDoc,
-  serverTimestamp, Timestamp,
+  serverTimestamp, Timestamp, writeBatch,
 } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
 
 // Naples Invitational 2027; ?trip=<id> opens another trip's board (e.g. Naples TEST for trying things out)
@@ -101,6 +102,13 @@ function firebaseStore(onChange, onError) {
     trade: (m, outcome, spend, pid) => addDoc(collection(db, 'marketTrades'), {
       tournamentId: TRIP_ID, marketId: m, playerId: pid, uid: state.uid, outcome, spend, createdAt: serverTimestamp(),
     }),
+    // Organizer only: the market and its bets (bets on a missing market wouldn't count anyway)
+    async deleteMarket(m) {
+      const batch = writeBatch(db);
+      state.trades.filter(t => t.marketId === m).forEach(t => batch.delete(doc(db, 'marketTrades', t.id)));
+      batch.delete(doc(db, 'markets', m));
+      await batch.commit();
+    },
     settle: (m, status, winner, by) => updateDoc(doc(db, 'markets', m), { status, winner, resolvedBy: by, resolvedAt: status === 'open' ? null : serverTimestamp() }),
     signIn: (email, pw) => signInWithEmailAndPassword(auth, email, pw),
     signOut: () => signOut(auth),
@@ -138,7 +146,7 @@ function demoStore(onChange) {
   };
   let data;
   try { data = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch { data = seed(); }
-  const state = { ready: true, demo: true, uid: 'demo-me', email: null, isOrganizer: false, roster, days, ...data };
+  const state = { ready: true, demo: true, uid: 'demo-me', email: null, isOrganizer: new URLSearchParams(location.search).has('organizer'), roster, days, ...data };
   const save = () => {
     try { localStorage.setItem(KEY, JSON.stringify({ markets: state.markets, trades: state.trades, claims: state.claims })); } catch { /* private window */ }
     setTimeout(() => onChange(state), 120);   // like a round trip to the server
@@ -152,6 +160,7 @@ function demoStore(onChange) {
     release(pid) { state.claims = { ...state.claims, [pid]: { ...state.claims[pid], uid: null } }; return save(); },
     createMarket(f) { state.markets = [...state.markets, { id: `m${n++}`, ...f, createdAt: Date.now(), status: 'open', winner: null }]; return save(); },
     trade(m, outcome, spend, pid) { state.trades = [...state.trades, { id: `t${n++}`, marketId: m, playerId: pid, outcome, spend, createdAt: Date.now() }]; return save(); },
+    deleteMarket(m) { state.markets = state.markets.filter(x => x.id !== m); state.trades = state.trades.filter(t => t.marketId !== m); return save(); },
     settle(m, status, winner, by) { state.markets = state.markets.map(x => x.id === m ? { ...x, status, winner, resolvedBy: by, resolvedAt: status === 'open' ? null : Date.now() } : x); return save(); },
     reset() { Object.assign(state, seed()); return save(); },
     signIn: () => Promise.reject(new Error('Not in practice mode')),
