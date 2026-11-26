@@ -9,6 +9,10 @@
 
 export const START = 1000;      // Bogey Bucks each player starts with
 export const LIQUIDITY = 200;   // higher = prices move less per buck
+export const MAX_ANSWERS = 16;  // e.g. "Who wins the whole thing?" with everyone on the trip
+// Markets with more answers get deeper, so B$100 on a 16-way long shot moves it
+// from 6% to about 17% instead of 43% (Yes/No markets stay at 200)
+export const liquidity = n => LIQUIDITY * Math.max(1, Math.log2(n));
 export const MAX_TRADE = 250;   // per trade (the rules allow up to 500)
 
 // Prices from the shares sold of each answer
@@ -37,6 +41,7 @@ export function replay(markets, trades) {
     const n = m.outcomes.length;
     mk[m.id] = {
       q: Array(n).fill(0), volume: 0, traders: new Set(), trades: [],
+      b: liquidity(n),
       history: [{ t: time(m.createdAt), p: prices(Array(n).fill(0)) }],
       holders: {},          // playerId -> { shares: [], spent: [] }
     };
@@ -60,10 +65,10 @@ export function replay(markets, trades) {
       const ok = !settled.has(t.marketId) && Number.isInteger(t.spend) && t.spend > 0
         && t.spend <= 500 && t.outcome >= 0 && t.outcome < n && t.spend <= w.cash + 1e-9;
       if (!ok) { fills[t.id] = { void: true }; continue; }
-      const before = prices(s.q)[t.outcome];
-      const shares = sharesFor(s.q, t.outcome, t.spend);
+      const before = prices(s.q, s.b)[t.outcome];
+      const shares = sharesFor(s.q, t.outcome, t.spend, s.b);
       s.q[t.outcome] += shares;
-      const after = prices(s.q);
+      const after = prices(s.q, s.b);
       w.cash -= t.spend; w.trades++;
       const h = (s.holders[t.playerId] ||= { shares: Array(n).fill(0), spent: Array(n).fill(0) });
       h.shares[t.outcome] += shares; h.spent[t.outcome] += t.spend;
@@ -89,7 +94,7 @@ export function replay(markets, trades) {
 
   // What each player's open shares are worth at today's prices
   for (const [id, s] of Object.entries(mk)) {
-    s.p = prices(s.q);
+    s.p = prices(s.q, s.b);
     s.traders = s.traders.size;
     if (settled.has(id)) continue;
     for (const [pid, h] of Object.entries(s.holders)) {
@@ -103,7 +108,8 @@ export function replay(markets, trades) {
 
 // What a trade would get right now (before it's sent)
 export function quote(q, i, spend) {
-  const shares = sharesFor(q, i, spend);
+  const b = liquidity(q.length);
+  const shares = sharesFor(q, i, spend, b);
   const next = q.slice(); next[i] += shares;
-  return { shares, avg: spend / shares, after: prices(next)[i], payout: shares };
+  return { shares, avg: spend / shares, after: prices(next, b)[i], payout: shares };
 }
